@@ -1,8 +1,8 @@
-# TestTFT
+# DaisySeedGFX
 
 ## Author
 
-<!-- Insert Your Name Here -->
+DAD Design
 
 ## Description
 
