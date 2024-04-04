@@ -8,12 +8,13 @@
 #include <stdint.h>
 #include "TFT_SPI.h"
 #include "Debug.h"
-//#include "UserConfig.h"
-//#include "st7789_Defines.h"
-//#include "per/spi.h"
 
 #define NB_BLOC (FRAME_GRILLE*FRAME_GRILLE)
-#define TAILLE_BLOC (TFT_WIDTH * TFT_HEIGHT * 3) / NB_BLOC
+#if TFT_COLOR == 16
+    #define TAILLE_BLOC (TFT_WIDTH * TFT_HEIGHT * 2) / NB_BLOC
+#else
+    #define TAILLE_BLOC (TFT_WIDTH * TFT_HEIGHT * 3) / NB_BLOC
+#endif
 
 //***********************************************************************************
 // Cmd_CASET

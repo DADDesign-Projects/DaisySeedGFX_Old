@@ -1,0 +1,3577 @@
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 1
+
+
+   1              		.cpu cortex-m7
+   2              		.eabi_attribute 28, 1
+   3              		.eabi_attribute 20, 1
+   4              		.eabi_attribute 21, 1
+   5              		.eabi_attribute 23, 3
+   6              		.eabi_attribute 24, 1
+   7              		.eabi_attribute 25, 1
+   8              		.eabi_attribute 26, 1
+   9              		.eabi_attribute 30, 2
+  10              		.eabi_attribute 34, 1
+  11              		.eabi_attribute 18, 4
+  12              		.file	"Frame.cpp"
+  13              		.text
+  14              	.Ltext0:
+  15              		.cfi_sections	.debug_frame
+  16              		.section	.text._ZN10cRBG_Frame16sendRASETDMADataEPvN5daisy9SpiHandle6ResultE,"ax",%progbits
+  17              		.align	1
+  18              		.p2align 2,,3
+  19              		.global	_ZN10cRBG_Frame16sendRASETDMADataEPvN5daisy9SpiHandle6ResultE
+  20              		.arch armv7e-m
+  21              		.syntax unified
+  22              		.thumb
+  23              		.thumb_func
+  24              		.fpu fpv5-d16
+  26              	_ZN10cRBG_Frame16sendRASETDMADataEPvN5daisy9SpiHandle6ResultE:
+  27              	.LVL0:
+  28              	.LFB2614:
+  29              		.file 1 "Frame.cpp"
+   1:Frame.cpp     **** //------------------------------------------------------------------------
+   2:Frame.cpp     **** // Copyright(c) 2024 Dad Desing.
+   3:Frame.cpp     **** //      Gestion d'une frame de pixel
+   4:Frame.cpp     **** //      Les pixels sont organisés en blocs de transmission.
+   5:Frame.cpp     **** //      Lorsqu'un Bloc est modififé il est placé dans un FIFO 
+   6:Frame.cpp     **** //      et transmis automatiquement à l'écran via SPI en DMA.
+   7:Frame.cpp     **** //------------------------------------------------------------------------
+   8:Frame.cpp     **** #include "Debug.h"
+   9:Frame.cpp     **** #include "daisy.h"
+  10:Frame.cpp     **** #include "Frame.h"
+  11:Frame.cpp     **** 
+  12:Frame.cpp     **** //***********************************************************************************
+  13:Frame.cpp     **** // cRBG_Frame
+  14:Frame.cpp     **** //  Gestion de la framme
+  15:Frame.cpp     **** //*********************************************************************************** 
+  16:Frame.cpp     **** 
+  17:Frame.cpp     **** // --------------------------------------------------------------------------
+  18:Frame.cpp     **** // Initialisation de la classe cRBG_Frame.
+  19:Frame.cpp     **** // Doit être appelée avant toute utilisation (aucune vérification réalisée) 
+  20:Frame.cpp     **** void cRBG_Frame::setFrame(RGB *pFrameBuff,  FIFO_Data *pFIFO_Data, uint16_t Width,  uint16_t Height
+  21:Frame.cpp     ****     Init_TFT_SPI();
+  22:Frame.cpp     ****     m_pFrame = pFrameBuff;
+  23:Frame.cpp     ****     m_pFIFO = pFIFO_Data;
+  24:Frame.cpp     ****     m_Width = Width;
+  25:Frame.cpp     ****     m_InitWidth = Width;
+  26:Frame.cpp     ****     m_Height = Height;
+  27:Frame.cpp     ****     m_InitHeight = Height;
+  28:Frame.cpp     ****     m_BlocWidth = Width/FRAME_GRILLE;
+  29:Frame.cpp     ****     m_InitBlocWidth = Width/FRAME_GRILLE;
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 2
+
+
+  30:Frame.cpp     ****     m_BlocHeight = Height/FRAME_GRILLE;
+  31:Frame.cpp     ****     m_InitBlocHeight = Height/FRAME_GRILLE;
+  32:Frame.cpp     **** 
+  33:Frame.cpp     ****     InitBlocs();
+  34:Frame.cpp     **** }
+  35:Frame.cpp     **** 
+  36:Frame.cpp     **** // --------------------------------------------------------------------------
+  37:Frame.cpp     **** // Configuration l'orientation de la frame et de l'écran
+  38:Frame.cpp     **** void cRBG_Frame::setFrameRotation (Rotation r){
+  39:Frame.cpp     ****     while(m_Busy==true){
+  40:Frame.cpp     ****         Delay(1);
+  41:Frame.cpp     ****     }
+  42:Frame.cpp     ****     setTFTRotation(r);
+  43:Frame.cpp     ****     switch (r) {
+  44:Frame.cpp     ****     case Rotation::Degre_0 :   // Portrait
+  45:Frame.cpp     ****     case Rotation::Degre_180 : // Inverter portrait
+  46:Frame.cpp     ****         setPortrait();
+  47:Frame.cpp     ****         break;
+  48:Frame.cpp     **** 
+  49:Frame.cpp     ****     case Rotation::Degre_90 : // Landscape (Portrait + 90)
+  50:Frame.cpp     ****     case Rotation::Degre_270 : // Inverted landscape
+  51:Frame.cpp     ****         setLandscape();
+  52:Frame.cpp     ****         break;
+  53:Frame.cpp     ****     }
+  54:Frame.cpp     **** }
+  55:Frame.cpp     **** // ---------------------------------------------------------------------------
+  56:Frame.cpp     **** // Initialisation des bloc
+  57:Frame.cpp     **** //   configure pour chaque pixel l'adresse du bloc correspondant
+  58:Frame.cpp     **** //   Doit être appelé pour chaque changement de d'orientation (Rotation)
+  59:Frame.cpp     **** //   
+  60:Frame.cpp     **** void cRBG_Frame::InitBlocs(){  
+  61:Frame.cpp     ****     RGB *pFrame = m_pFrame;
+  62:Frame.cpp     ****     for(uint16_t y =0; y < m_Height ; y ++){
+  63:Frame.cpp     ****         for(uint16_t x = 0; x < m_Width ; x++){
+  64:Frame.cpp     ****             uint16_t Bloc = (x/m_BlocWidth)+((y/m_BlocHeight)*(FRAME_GRILLE));
+  65:Frame.cpp     ****             pFrame->m_pChange = &m_BlocChange[Bloc];
+  66:Frame.cpp     ****             pFrame->B = 0;
+  67:Frame.cpp     ****             pFrame->G = 0;
+  68:Frame.cpp     ****             pFrame->R = 0;
+  69:Frame.cpp     ****             pFrame++;
+  70:Frame.cpp     ****         }
+  71:Frame.cpp     ****     }
+  72:Frame.cpp     ****     for(uint8_t IndexBloc=0; IndexBloc < NB_BLOC; IndexBloc++){
+  73:Frame.cpp     ****         m_BlocChange[IndexBloc]= true;
+  74:Frame.cpp     ****     }
+  75:Frame.cpp     ****     FlushFrame();
+  76:Frame.cpp     **** }
+  77:Frame.cpp     **** 
+  78:Frame.cpp     **** // --------------------------------------------------------------------------
+  79:Frame.cpp     **** // Configuration de la frame en mode portrait
+  80:Frame.cpp     **** void cRBG_Frame::setPortrait(){
+  81:Frame.cpp     ****     m_Height = m_InitHeight;
+  82:Frame.cpp     ****     m_Width = m_InitWidth;
+  83:Frame.cpp     ****     m_BlocHeight = m_InitBlocHeight;
+  84:Frame.cpp     ****     m_BlocWidth = m_InitBlocWidth;
+  85:Frame.cpp     ****     InitBlocs();
+  86:Frame.cpp     **** }
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 3
+
+
+  87:Frame.cpp     **** 
+  88:Frame.cpp     **** // --------------------------------------------------------------------------
+  89:Frame.cpp     **** // Configuration de la frame en mode paysage     
+  90:Frame.cpp     **** void cRBG_Frame::setLandscape(){
+  91:Frame.cpp     ****     m_Height = m_InitWidth;
+  92:Frame.cpp     ****     m_Width = m_InitHeight;
+  93:Frame.cpp     ****     m_BlocHeight = m_InitBlocWidth;
+  94:Frame.cpp     ****     m_BlocWidth = m_InitBlocHeight;
+  95:Frame.cpp     ****     InitBlocs();
+  96:Frame.cpp     **** }
+  97:Frame.cpp     **** 
+  98:Frame.cpp     **** // --------------------------------------------------------------------------
+  99:Frame.cpp     **** // Transmission des modifications de la frame vers l'écran
+ 100:Frame.cpp     **** void cRBG_Frame::FlushFrame(){
+ 101:Frame.cpp     ****     uint16_t x;
+ 102:Frame.cpp     ****     uint16_t y;
+ 103:Frame.cpp     ****     
+ 104:Frame.cpp     ****     for(uint16_t Bloc = 0; Bloc < NB_BLOC; Bloc++){
+ 105:Frame.cpp     ****         if(getBlocChange(Bloc) == true){
+ 106:Frame.cpp     ****             resetBlocChange(Bloc);
+ 107:Frame.cpp     ****             x= (Bloc % FRAME_GRILLE) * m_BlocWidth;
+ 108:Frame.cpp     ****             y= (Bloc / FRAME_GRILLE) * m_BlocHeight;
+ 109:Frame.cpp     ****         
+ 110:Frame.cpp     ****             while(AddBloc(x, y) == false){
+ 111:Frame.cpp     ****                 System::DelayTicks(1);
+ 112:Frame.cpp     ****             }
+ 113:Frame.cpp     ****             sendDMA();
+ 114:Frame.cpp     ****         }
+ 115:Frame.cpp     ****     }
+ 116:Frame.cpp     **** }
+ 117:Frame.cpp     **** // --------------------------------------------------------------------------
+ 118:Frame.cpp     **** // Ajout d'un bloc dans le FIFO
+ 119:Frame.cpp     **** bool  cRBG_Frame::AddBloc( uint16_t x, uint16_t y){
+ 120:Frame.cpp     ****     __disable_irq();
+ 121:Frame.cpp     ****     if(m_FIFO_NbElements >= SIZE_FIFO){
+ 122:Frame.cpp     ****         __enable_irq();
+ 123:Frame.cpp     ****         return false;
+ 124:Frame.cpp     ****     }
+ 125:Frame.cpp     ****     __enable_irq();
+ 126:Frame.cpp     ****     uint16_t dx = x + m_BlocWidth-1;
+ 127:Frame.cpp     ****     uint16_t dy = y + m_BlocHeight-1;
+ 128:Frame.cpp     **** 
+ 129:Frame.cpp     ****     m_pFIFO->m_CmdCASET[m_FIFO_in].setData(x, dx);
+ 130:Frame.cpp     ****     m_pFIFO->m_CmdRASET[m_FIFO_in].setData(y, dy);
+ 131:Frame.cpp     ****     m_pFIFO->m_CmdRAWWR[m_FIFO_in].setData(x, y, dx, dy, this);
+ 132:Frame.cpp     ****     m_FIFO_in +=1;
+ 133:Frame.cpp     ****     if(m_FIFO_in >= SIZE_FIFO){
+ 134:Frame.cpp     ****         m_FIFO_in = 0;
+ 135:Frame.cpp     ****     }
+ 136:Frame.cpp     ****     m_FIFO_NbElements+=1;
+ 137:Frame.cpp     ****     return true;
+ 138:Frame.cpp     **** }
+ 139:Frame.cpp     **** 
+ 140:Frame.cpp     **** // --------------------------------------------------------------------------
+ 141:Frame.cpp     **** // Transmission des blocs contenus dans le FIFO
+ 142:Frame.cpp     **** bool cRBG_Frame::sendDMA(){
+ 143:Frame.cpp     ****     // Le FIFO n'est-il vide ou en cours de transmission
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 4
+
+
+ 144:Frame.cpp     ****     __disable_irq();
+ 145:Frame.cpp     ****     if((m_FIFO_NbElements == 0) || (m_Busy == true)){
+ 146:Frame.cpp     ****         __enable_irq();
+ 147:Frame.cpp     ****         return false;
+ 148:Frame.cpp     ****     }
+ 149:Frame.cpp     ****     __enable_irq();
+ 150:Frame.cpp     **** 
+ 151:Frame.cpp     ****     // On lance la transmission du premier bloc à transférer
+ 152:Frame.cpp     ****     m_Busy = true;
+ 153:Frame.cpp     ****     SendDMACommand(&m_pFIFO->m_CmdCASET[m_FIFO_out].m_Commande, cRBG_Frame::sendCASETDMAData, this)
+ 154:Frame.cpp     ****     return true;
+ 155:Frame.cpp     **** }
+ 156:Frame.cpp     **** 
+ 157:Frame.cpp     **** void cRBG_Frame::sendCASETDMAData(void* context, daisy::SpiHandle::Result result){
+ 158:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ 159:Frame.cpp     ****     pthis->SendDMAData(pthis->m_pFIFO->m_CmdCASET[pthis->m_FIFO_out].m_Data, 4, cRBG_Frame::sendRAS
+ 160:Frame.cpp     **** }
+ 161:Frame.cpp     **** // Comande RASET
+ 162:Frame.cpp     **** void cRBG_Frame::sendRASETDMACmd(void* context, daisy::SpiHandle::Result result){
+ 163:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ 164:Frame.cpp     ****     pthis->SendDMACommand(&pthis->m_pFIFO->m_CmdRASET[pthis->m_FIFO_out].m_Commande, cRBG_Frame::se
+ 165:Frame.cpp     **** }
+ 166:Frame.cpp     **** void cRBG_Frame::sendRASETDMAData(void* context, daisy::SpiHandle::Result result){
+  30              		.loc 1 166 82 view -0
+  31              		.cfi_startproc
+  32              		@ args = 0, pretend = 0, frame = 0
+  33              		@ frame_needed = 0, uses_anonymous_args = 0
+ 167:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+  34              		.loc 1 167 5 view .LVU1
+ 168:Frame.cpp     ****     pthis->SendDMAData(pthis->m_pFIFO->m_CmdRASET[pthis->m_FIFO_out].m_Data, 4, cRBG_Frame::sendRAW
+  35              		.loc 1 168 70 is_stmt 0 view .LVU2
+  36 0000 B0F8D230 		ldrh	r3, [r0, #210]
+  37              	.LBB58:
+  38              	.LBB59:
+  39              		.file 2 "TFT_SPI.h"
+   1:TFT_SPI.h     **** //------------------------------------------------------------------------
+   2:TFT_SPI.h     **** // Copyright(c) 2024 Dad Desing.
+   3:TFT_SPI.h     **** //      Gestion d'une liaison SP vers un ecran 
+   4:TFT_SPI.h     **** //------------------------------------------------------------------------
+   5:TFT_SPI.h     **** #pragma once
+   6:TFT_SPI.h     **** #include "daisy_seed.h"
+   7:TFT_SPI.h     **** #include "per/spi.h"
+   8:TFT_SPI.h     **** #include "per/gpio.h"
+   9:TFT_SPI.h     **** #include "sys/system.h"
+  10:TFT_SPI.h     **** #include "UserConfig.h"
+  11:TFT_SPI.h     **** #include "ST7789_Defines.h"
+  12:TFT_SPI.h     **** 
+  13:TFT_SPI.h     **** using namespace daisy;
+  14:TFT_SPI.h     **** extern DaisySeed hw;
+  15:TFT_SPI.h     **** 
+  16:TFT_SPI.h     **** enum class SPIMode {
+  17:TFT_SPI.h     ****     Mode0,
+  18:TFT_SPI.h     ****     Mode1,
+  19:TFT_SPI.h     ****     Mode2,
+  20:TFT_SPI.h     ****     Mode3
+  21:TFT_SPI.h     **** };
+  22:TFT_SPI.h     **** 
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 5
+
+
+  23:TFT_SPI.h     **** enum class Rotation{
+  24:TFT_SPI.h     ****     Degre_0,
+  25:TFT_SPI.h     ****     Degre_90,
+  26:TFT_SPI.h     ****     Degre_180,
+  27:TFT_SPI.h     ****     Degre_270
+  28:TFT_SPI.h     **** };
+  29:TFT_SPI.h     **** 
+  30:TFT_SPI.h     **** // Configuration des GPIO utilisés
+  31:TFT_SPI.h     **** #define _TFT_SPI_PORT SpiHandle::Config::Peripheral::TFT_SPI_PORT
+  32:TFT_SPI.h     **** #define _TFT_SPI_MODE SPIMode::TFT_SPI_MODE
+  33:TFT_SPI.h     **** 
+  34:TFT_SPI.h     **** // Configuration des GPIO utilisés
+  35:TFT_SPI.h     **** #define _TFT_MOSI seed::TFT_MOSI
+  36:TFT_SPI.h     **** #define _TFT_SCLK seed::TFT_SCLK
+  37:TFT_SPI.h     **** #define _TFT_DC   seed::TFT_DC
+  38:TFT_SPI.h     **** #define _TFT_RST  seed::TFT_RST 
+  39:TFT_SPI.h     **** 
+  40:TFT_SPI.h     **** //***********************************************************************************
+  41:TFT_SPI.h     **** // TFT_SPI
+  42:TFT_SPI.h     **** //  Gestion de la liaison SPI
+  43:TFT_SPI.h     **** //*********************************************************************************** 
+  44:TFT_SPI.h     **** class TFT_SPI {
+  45:TFT_SPI.h     ****     public :
+  46:TFT_SPI.h     **** 
+  47:TFT_SPI.h     **** 	// --------------------------------------------------------------------------
+  48:TFT_SPI.h     **** 	// Initialisation du SPI
+  49:TFT_SPI.h     ****     void Init_TFT_SPI();
+  50:TFT_SPI.h     ****     
+  51:TFT_SPI.h     **** 	// --------------------------------------------------------------------------
+  52:TFT_SPI.h     **** 	// Initialisation spécifique au SPI
+  53:TFT_SPI.h     ****     void ST7789_Initialise();
+  54:TFT_SPI.h     **** 	
+  55:TFT_SPI.h     ****     // --------------------------------------------------------------------------
+  56:TFT_SPI.h     **** 	// Modification de l'orientation de l'écran
+  57:TFT_SPI.h     ****     void setTFTRotation(Rotation r);
+  58:TFT_SPI.h     ****     
+  59:TFT_SPI.h     ****     // --------------------------------------------------------------------------
+  60:TFT_SPI.h     ****     // Emission d'une commande
+  61:TFT_SPI.h     ****     inline void SendCommand(uint8_t cmd){
+  62:TFT_SPI.h     ****         m_dc.Write(false);
+  63:TFT_SPI.h     ****         m_spi.BlockingTransmit(&cmd, 1);
+  64:TFT_SPI.h     ****     }
+  65:TFT_SPI.h     **** 
+  66:TFT_SPI.h     ****     // --------------------------------------------------------------------------
+  67:TFT_SPI.h     ****     // Emission d'une donnée
+  68:TFT_SPI.h     ****     inline void SendData(uint8_t Data){
+  69:TFT_SPI.h     ****         m_dc.Write(true);
+  70:TFT_SPI.h     ****         m_spi.BlockingTransmit(&Data, 1);
+  71:TFT_SPI.h     ****     }
+  72:TFT_SPI.h     **** 
+  73:TFT_SPI.h     ****     // --------------------------------------------------------------------------
+  74:TFT_SPI.h     ****     // Emission d'un bloc de données
+  75:TFT_SPI.h     ****     inline void SendData(uint8_t* buff, size_t size) {
+  76:TFT_SPI.h     ****         m_dc.Write(true);
+  77:TFT_SPI.h     ****         m_spi.BlockingTransmit(buff, size);
+  78:TFT_SPI.h     ****     }
+  79:TFT_SPI.h     **** 
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 6
+
+
+  80:TFT_SPI.h     ****     // --------------------------------------------------------------------------
+  81:TFT_SPI.h     ****     // Emission d'une commande en mode DMA
+  82:TFT_SPI.h     ****     inline void SendDMACommand(uint8_t *cmd, SpiHandle::EndCallbackFunctionPtr end_callback=NULL, v
+  83:TFT_SPI.h     ****     {
+  84:TFT_SPI.h     ****         m_dc.Write(false);
+  85:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+  86:TFT_SPI.h     ****     }
+  87:TFT_SPI.h     ****     
+  88:TFT_SPI.h     ****     // --------------------------------------------------------------------------
+  89:TFT_SPI.h     ****     // Emission d'un bloc de données en mode DMA
+  90:TFT_SPI.h     ****     inline void SendDMAData(uint8_t* buff, size_t size, SpiHandle::EndCallbackFunctionPtr end_callb
+  91:TFT_SPI.h     ****     {   
+  92:TFT_SPI.h     ****         m_dc.Write(true);
+  40              		.loc 2 92 19 view .LVU3
+  41 0004 0121     		movs	r1, #1
+  42              	.LVL1:
+  43              		.loc 2 92 19 view .LVU4
+  44              	.LBE59:
+  45              	.LBE58:
+  46              		.loc 1 168 70 view .LVU5
+  47 0006 D0F8CC20 		ldr	r2, [r0, #204]
+  48 000a 03EB8303 		add	r3, r3, r3, lsl #2
+  49 000e 3333     		adds	r3, r3, #51
+ 166:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+  50              		.loc 1 166 82 view .LVU6
+  51 0010 70B5     		push	{r4, r5, r6, lr}
+  52              		.cfi_def_cfa_offset 16
+  53              		.cfi_offset 4, -16
+  54              		.cfi_offset 5, -12
+  55              		.cfi_offset 6, -8
+  56              		.cfi_offset 14, -4
+  57              		.loc 1 168 70 view .LVU7
+  58 0012 D518     		adds	r5, r2, r3
+ 166:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+  59              		.loc 1 166 82 view .LVU8
+  60 0014 82B0     		sub	sp, sp, #8
+  61              		.cfi_def_cfa_offset 24
+ 166:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+  62              		.loc 1 166 82 view .LVU9
+  63 0016 0446     		mov	r4, r0
+  64              	.LVL2:
+  65              		.loc 1 168 5 is_stmt 1 view .LVU10
+  66              	.LBB61:
+  67              	.LBI58:
+  90:TFT_SPI.h     ****     {   
+  68              		.loc 2 90 17 view .LVU11
+  69              	.LBB60:
+  70              		.loc 2 92 9 view .LVU12
+  93:TFT_SPI.h     ****         m_spi.DmaTransmit(buff, size, NULL, end_callback, callback_context);
+  71              		.loc 2 93 26 is_stmt 0 view .LVU13
+  72 0018 064E     		ldr	r6, .L4
+  92:TFT_SPI.h     ****         m_spi.DmaTransmit(buff, size, NULL, end_callback, callback_context);
+  73              		.loc 2 92 19 view .LVU14
+  74 001a 4030     		adds	r0, r0, #64
+  75              	.LVL3:
+  92:TFT_SPI.h     ****         m_spi.DmaTransmit(buff, size, NULL, end_callback, callback_context);
+  76              		.loc 2 92 19 view .LVU15
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 7
+
+
+  77 001c FFF7FEFF 		bl	_ZN5daisy4GPIO5WriteEb
+  78              	.LVL4:
+  79              		.loc 2 93 9 is_stmt 1 view .LVU16
+  80              		.loc 2 93 26 is_stmt 0 view .LVU17
+  81 0020 0023     		movs	r3, #0
+  82 0022 0422     		movs	r2, #4
+  83 0024 2946     		mov	r1, r5
+  84 0026 2046     		mov	r0, r4
+  85 0028 0194     		str	r4, [sp, #4]
+  86 002a 0096     		str	r6, [sp]
+  87 002c FFF7FEFF 		bl	_ZN5daisy9SpiHandle11DmaTransmitEPhjPFvPvEPFvS2_NS0_6ResultEES2_
+  88              	.LVL5:
+  89              		.loc 2 93 26 view .LVU18
+  90              	.LBE60:
+  91              	.LBE61:
+ 169:Frame.cpp     **** }
+  92              		.loc 1 169 1 view .LVU19
+  93 0030 02B0     		add	sp, sp, #8
+  94              		.cfi_def_cfa_offset 16
+  95              		@ sp needed
+  96 0032 70BD     		pop	{r4, r5, r6, pc}
+  97              	.LVL6:
+  98              	.L5:
+  99              		.loc 1 169 1 view .LVU20
+ 100              		.align	2
+ 101              	.L4:
+ 102 0034 00000000 		.word	_ZN10cRBG_Frame15sendRAWWRDMACmdEPvN5daisy9SpiHandle6ResultE
+ 103              		.cfi_endproc
+ 104              	.LFE2614:
+ 106              		.section	.text._ZN10cRBG_Frame6endDMAEPvN5daisy9SpiHandle6ResultE,"ax",%progbits
+ 107              		.align	1
+ 108              		.p2align 2,,3
+ 109              		.global	_ZN10cRBG_Frame6endDMAEPvN5daisy9SpiHandle6ResultE
+ 110              		.syntax unified
+ 111              		.thumb
+ 112              		.thumb_func
+ 113              		.fpu fpv5-d16
+ 115              	_ZN10cRBG_Frame6endDMAEPvN5daisy9SpiHandle6ResultE:
+ 116              	.LVL7:
+ 117              	.LFB2617:
+ 170:Frame.cpp     **** // Commande RAAWWR
+ 171:Frame.cpp     **** void cRBG_Frame::sendRAWWRDMACmd(void* context, daisy::SpiHandle::Result result){
+ 172:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ 173:Frame.cpp     ****     pthis->SendDMACommand(&pthis->m_pFIFO->m_CmdRAWWR[pthis->m_FIFO_out].m_Commande, cRBG_Frame::se
+ 174:Frame.cpp     **** }
+ 175:Frame.cpp     **** void cRBG_Frame::sendRAWWRDMAData(void* context, daisy::SpiHandle::Result result){
+ 176:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ 177:Frame.cpp     ****     pthis->SendDMAData(pthis->m_pFIFO->m_CmdRAWWR[pthis->m_FIFO_out].m_Data, TAILLE_BLOC, cRBG_Fram
+ 178:Frame.cpp     **** }
+ 179:Frame.cpp     **** 
+ 180:Frame.cpp     **** // Fin de transmission du bloc
+ 181:Frame.cpp     **** void cRBG_Frame::endDMA(void* context, daisy::SpiHandle::Result result){
+ 118              		.loc 1 181 72 is_stmt 1 view -0
+ 119              		.cfi_startproc
+ 120              		@ args = 0, pretend = 0, frame = 0
+ 121              		@ frame_needed = 0, uses_anonymous_args = 0
+ 182:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 8
+
+
+ 122              		.loc 1 182 5 view .LVU22
+ 183:Frame.cpp     ****     
+ 184:Frame.cpp     ****     // Bloc suivant
+ 185:Frame.cpp     ****     pthis->m_FIFO_out++;
+ 123              		.loc 1 185 22 is_stmt 0 view .LVU23
+ 124 0000 B0F8D230 		ldrh	r3, [r0, #210]
+ 125 0004 0133     		adds	r3, r3, #1
+ 126 0006 9BB2     		uxth	r3, r3
+ 186:Frame.cpp     ****     if(pthis->m_FIFO_out >= SIZE_FIFO){
+ 127              		.loc 1 186 5 view .LVU24
+ 128 0008 092B     		cmp	r3, #9
+ 187:Frame.cpp     ****         pthis->m_FIFO_out = 0;
+ 129              		.loc 1 187 27 view .LVU25
+ 130 000a 88BF     		it	hi
+ 131 000c 0023     		movhi	r3, #0
+ 181:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ 132              		.loc 1 181 72 view .LVU26
+ 133 000e 70B5     		push	{r4, r5, r6, lr}
+ 134              		.cfi_def_cfa_offset 16
+ 135              		.cfi_offset 4, -16
+ 136              		.cfi_offset 5, -12
+ 137              		.cfi_offset 6, -8
+ 138              		.cfi_offset 14, -4
+ 139              		.loc 1 187 27 view .LVU27
+ 140 0010 A0F8D230 		strh	r3, [r0, #210]	@ movhi
+ 181:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ 141              		.loc 1 181 72 view .LVU28
+ 142 0014 82B0     		sub	sp, sp, #8
+ 143              		.cfi_def_cfa_offset 24
+ 188:Frame.cpp     ****     }
+ 189:Frame.cpp     ****     pthis->m_FIFO_NbElements -= 1;
+ 144              		.loc 1 189 30 view .LVU29
+ 145 0016 B0F8D430 		ldrh	r3, [r0, #212]
+ 181:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ 146              		.loc 1 181 72 view .LVU30
+ 147 001a 0446     		mov	r4, r0
+ 148              	.LVL8:
+ 185:Frame.cpp     ****     if(pthis->m_FIFO_out >= SIZE_FIFO){
+ 149              		.loc 1 185 5 is_stmt 1 view .LVU31
+ 186:Frame.cpp     ****         pthis->m_FIFO_out = 0;
+ 150              		.loc 1 186 5 view .LVU32
+ 187:Frame.cpp     ****     }
+ 151              		.loc 1 187 9 view .LVU33
+ 152              		.loc 1 189 5 view .LVU34
+ 153              		.loc 1 189 30 is_stmt 0 view .LVU35
+ 154 001c 013B     		subs	r3, r3, #1
+ 155 001e 9BB2     		uxth	r3, r3
+ 156 0020 A0F8D430 		strh	r3, [r0, #212]	@ movhi
+ 190:Frame.cpp     **** 
+ 191:Frame.cpp     ****     // Si le FIFO n'est pas vide -> Transmission du bloc suivant
+ 192:Frame.cpp     ****     if(pthis->m_FIFO_NbElements != 0){
+ 157              		.loc 1 192 5 is_stmt 1 view .LVU36
+ 158 0024 1BB9     		cbnz	r3, .L13
+ 193:Frame.cpp     ****         pthis->SendDMACommand(&pthis->m_pFIFO->m_CmdCASET[pthis->m_FIFO_out].m_Commande, cRBG_Frame
+ 194:Frame.cpp     ****     }else{
+ 195:Frame.cpp     ****         pthis->m_Busy = false;
+ 159              		.loc 1 195 9 view .LVU37
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 9
+
+
+ 160              		.loc 1 195 23 is_stmt 0 view .LVU38
+ 161 0026 80F8D630 		strb	r3, [r0, #214]
+ 196:Frame.cpp     ****     }
+ 197:Frame.cpp     **** };
+ 162              		.loc 1 197 1 view .LVU39
+ 163 002a 02B0     		add	sp, sp, #8
+ 164              		.cfi_remember_state
+ 165              		.cfi_def_cfa_offset 16
+ 166              		@ sp needed
+ 167 002c 70BD     		pop	{r4, r5, r6, pc}
+ 168              	.L13:
+ 169              		.cfi_restore_state
+ 170              	.LVL9:
+ 171              	.LBB66:
+ 172              	.LBI66:
+ 181:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ 173              		.loc 1 181 6 is_stmt 1 view .LVU40
+ 174              	.LBB67:
+ 193:Frame.cpp     ****         pthis->SendDMACommand(&pthis->m_pFIFO->m_CmdCASET[pthis->m_FIFO_out].m_Commande, cRBG_Frame
+ 175              		.loc 1 193 9 view .LVU41
+ 193:Frame.cpp     ****         pthis->SendDMACommand(&pthis->m_pFIFO->m_CmdCASET[pthis->m_FIFO_out].m_Commande, cRBG_Frame
+ 176              		.loc 1 193 30 is_stmt 0 view .LVU42
+ 177 002e B0F8D230 		ldrh	r3, [r0, #210]
+ 178              	.LBB68:
+ 179              	.LBB69:
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 180              		.loc 2 84 19 view .LVU43
+ 181 0032 0021     		movs	r1, #0
+ 182              	.LVL10:
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 183              		.loc 2 84 19 view .LVU44
+ 184              	.LBE69:
+ 185              	.LBE68:
+ 193:Frame.cpp     ****     }else{
+ 186              		.loc 1 193 30 view .LVU45
+ 187 0034 D0F8CC20 		ldr	r2, [r0, #204]
+ 188              	.LBB73:
+ 189              	.LBB70:
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 190              		.loc 2 84 19 view .LVU46
+ 191 0038 4030     		adds	r0, r0, #64
+ 192              	.LVL11:
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 193              		.loc 2 84 19 view .LVU47
+ 194              	.LBE70:
+ 195              	.LBE73:
+ 193:Frame.cpp     ****     }else{
+ 196              		.loc 1 193 30 view .LVU48
+ 197 003a 03EB8303 		add	r3, r3, r3, lsl #2
+ 198              	.LBB74:
+ 199              	.LBB71:
+  85:TFT_SPI.h     ****     }
+ 200              		.loc 2 85 26 view .LVU49
+ 201 003e 074E     		ldr	r6, .L14
+ 202              	.LBE71:
+ 203              	.LBE74:
+ 193:Frame.cpp     ****     }else{
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 10
+
+
+ 204              		.loc 1 193 30 view .LVU50
+ 205 0040 D518     		adds	r5, r2, r3
+ 206              	.LVL12:
+ 207              	.LBB75:
+ 208              	.LBI68:
+  82:TFT_SPI.h     ****     {
+ 209              		.loc 2 82 17 is_stmt 1 view .LVU51
+ 210              	.LBB72:
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 211              		.loc 2 84 9 view .LVU52
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 212              		.loc 2 84 19 is_stmt 0 view .LVU53
+ 213 0042 FFF7FEFF 		bl	_ZN5daisy4GPIO5WriteEb
+ 214              	.LVL13:
+  85:TFT_SPI.h     ****     }
+ 215              		.loc 2 85 9 is_stmt 1 view .LVU54
+  85:TFT_SPI.h     ****     }
+ 216              		.loc 2 85 26 is_stmt 0 view .LVU55
+ 217 0046 0023     		movs	r3, #0
+ 218 0048 0122     		movs	r2, #1
+ 219 004a 2946     		mov	r1, r5
+ 220 004c 2046     		mov	r0, r4
+ 221 004e 0194     		str	r4, [sp, #4]
+ 222 0050 0096     		str	r6, [sp]
+ 223 0052 FFF7FEFF 		bl	_ZN5daisy9SpiHandle11DmaTransmitEPhjPFvPvEPFvS2_NS0_6ResultEES2_
+ 224              	.LVL14:
+ 225              	.LBE72:
+ 226              	.LBE75:
+ 227              	.LBE67:
+ 228              	.LBE66:
+ 229              		.loc 1 197 1 view .LVU56
+ 230 0056 02B0     		add	sp, sp, #8
+ 231              		.cfi_def_cfa_offset 16
+ 232              		@ sp needed
+ 233 0058 70BD     		pop	{r4, r5, r6, pc}
+ 234              	.LVL15:
+ 235              	.L15:
+ 236              		.loc 1 197 1 view .LVU57
+ 237 005a 00BF     		.align	2
+ 238              	.L14:
+ 239 005c 00000000 		.word	_ZN10cRBG_Frame16sendCASETDMADataEPvN5daisy9SpiHandle6ResultE
+ 240              		.cfi_endproc
+ 241              	.LFE2617:
+ 243              		.section	.text._ZN10cRBG_Frame16sendRAWWRDMADataEPvN5daisy9SpiHandle6ResultE,"ax",%progbits
+ 244              		.align	1
+ 245              		.p2align 2,,3
+ 246              		.global	_ZN10cRBG_Frame16sendRAWWRDMADataEPvN5daisy9SpiHandle6ResultE
+ 247              		.syntax unified
+ 248              		.thumb
+ 249              		.thumb_func
+ 250              		.fpu fpv5-d16
+ 252              	_ZN10cRBG_Frame16sendRAWWRDMADataEPvN5daisy9SpiHandle6ResultE:
+ 253              	.LVL16:
+ 254              	.LFB2616:
+ 175:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ 255              		.loc 1 175 82 is_stmt 1 view -0
+ 256              		.cfi_startproc
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 11
+
+
+ 257              		@ args = 0, pretend = 0, frame = 0
+ 258              		@ frame_needed = 0, uses_anonymous_args = 0
+ 176:Frame.cpp     ****     pthis->SendDMAData(pthis->m_pFIFO->m_CmdRAWWR[pthis->m_FIFO_out].m_Data, TAILLE_BLOC, cRBG_Fram
+ 259              		.loc 1 176 5 view .LVU59
+ 177:Frame.cpp     **** }
+ 260              		.loc 1 177 70 is_stmt 0 view .LVU60
+ 261 0000 B0F8D230 		ldrh	r3, [r0, #210]
+ 262              	.LBB78:
+ 263              	.LBB79:
+  92:TFT_SPI.h     ****         m_spi.DmaTransmit(buff, size, NULL, end_callback, callback_context);
+ 264              		.loc 2 92 19 view .LVU61
+ 265 0004 0121     		movs	r1, #1
+ 266              	.LVL17:
+  92:TFT_SPI.h     ****         m_spi.DmaTransmit(buff, size, NULL, end_callback, callback_context);
+ 267              		.loc 2 92 19 view .LVU62
+ 268              	.LBE79:
+ 269              	.LBE78:
+ 177:Frame.cpp     **** }
+ 270              		.loc 1 177 70 view .LVU63
+ 271 0006 D0F8CC20 		ldr	r2, [r0, #204]
+ 175:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ 272              		.loc 1 175 82 view .LVU64
+ 273 000a 70B5     		push	{r4, r5, r6, lr}
+ 274              		.cfi_def_cfa_offset 16
+ 275              		.cfi_offset 4, -16
+ 276              		.cfi_offset 5, -12
+ 277              		.cfi_offset 6, -8
+ 278              		.cfi_offset 14, -4
+ 177:Frame.cpp     **** }
+ 279              		.loc 1 177 70 view .LVU65
+ 280 000c 03EB4305 		add	r5, r3, r3, lsl #1
+ 175:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ 281              		.loc 1 175 82 view .LVU66
+ 282 0010 82B0     		sub	sp, sp, #8
+ 283              		.cfi_def_cfa_offset 24
+ 175:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ 284              		.loc 1 175 82 view .LVU67
+ 285 0012 0446     		mov	r4, r0
+ 286              	.LVL18:
+ 177:Frame.cpp     **** }
+ 287              		.loc 1 177 5 is_stmt 1 view .LVU68
+ 288              	.LBB83:
+ 289              	.LBB80:
+ 290              		.loc 2 93 26 is_stmt 0 view .LVU69
+ 291 0014 094E     		ldr	r6, .L18
+ 292              	.LBE80:
+ 293              	.LBE83:
+ 177:Frame.cpp     **** }
+ 294              		.loc 1 177 70 view .LVU70
+ 295 0016 03EB4523 		add	r3, r3, r5, lsl #9
+ 296              	.LBB84:
+ 297              	.LBB81:
+  92:TFT_SPI.h     ****         m_spi.DmaTransmit(buff, size, NULL, end_callback, callback_context);
+ 298              		.loc 2 92 19 view .LVU71
+ 299 001a 4030     		adds	r0, r0, #64
+ 300              	.LVL19:
+  92:TFT_SPI.h     ****         m_spi.DmaTransmit(buff, size, NULL, end_callback, callback_context);
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 12
+
+
+ 301              		.loc 2 92 19 view .LVU72
+ 302              	.LBE81:
+ 303              	.LBE84:
+ 177:Frame.cpp     **** }
+ 304              		.loc 1 177 70 view .LVU73
+ 305 001c 6533     		adds	r3, r3, #101
+ 306 001e D518     		adds	r5, r2, r3
+ 307              	.LVL20:
+ 308              	.LBB85:
+ 309              	.LBI78:
+  90:TFT_SPI.h     ****     {   
+ 310              		.loc 2 90 17 is_stmt 1 view .LVU74
+ 311              	.LBB82:
+  92:TFT_SPI.h     ****         m_spi.DmaTransmit(buff, size, NULL, end_callback, callback_context);
+ 312              		.loc 2 92 9 view .LVU75
+  92:TFT_SPI.h     ****         m_spi.DmaTransmit(buff, size, NULL, end_callback, callback_context);
+ 313              		.loc 2 92 19 is_stmt 0 view .LVU76
+ 314 0020 FFF7FEFF 		bl	_ZN5daisy4GPIO5WriteEb
+ 315              	.LVL21:
+ 316              		.loc 2 93 9 is_stmt 1 view .LVU77
+ 317              		.loc 2 93 26 is_stmt 0 view .LVU78
+ 318 0024 0023     		movs	r3, #0
+ 319 0026 4FF4C062 		mov	r2, #1536
+ 320 002a 2946     		mov	r1, r5
+ 321 002c 2046     		mov	r0, r4
+ 322 002e 0194     		str	r4, [sp, #4]
+ 323 0030 0096     		str	r6, [sp]
+ 324 0032 FFF7FEFF 		bl	_ZN5daisy9SpiHandle11DmaTransmitEPhjPFvPvEPFvS2_NS0_6ResultEES2_
+ 325              	.LVL22:
+ 326              		.loc 2 93 26 view .LVU79
+ 327              	.LBE82:
+ 328              	.LBE85:
+ 178:Frame.cpp     **** 
+ 329              		.loc 1 178 1 view .LVU80
+ 330 0036 02B0     		add	sp, sp, #8
+ 331              		.cfi_def_cfa_offset 16
+ 332              		@ sp needed
+ 333 0038 70BD     		pop	{r4, r5, r6, pc}
+ 334              	.LVL23:
+ 335              	.L19:
+ 178:Frame.cpp     **** 
+ 336              		.loc 1 178 1 view .LVU81
+ 337 003a 00BF     		.align	2
+ 338              	.L18:
+ 339 003c 00000000 		.word	_ZN10cRBG_Frame6endDMAEPvN5daisy9SpiHandle6ResultE
+ 340              		.cfi_endproc
+ 341              	.LFE2616:
+ 343              		.section	.text._ZN10cRBG_Frame16sendCASETDMADataEPvN5daisy9SpiHandle6ResultE,"ax",%progbits
+ 344              		.align	1
+ 345              		.p2align 2,,3
+ 346              		.global	_ZN10cRBG_Frame16sendCASETDMADataEPvN5daisy9SpiHandle6ResultE
+ 347              		.syntax unified
+ 348              		.thumb
+ 349              		.thumb_func
+ 350              		.fpu fpv5-d16
+ 352              	_ZN10cRBG_Frame16sendCASETDMADataEPvN5daisy9SpiHandle6ResultE:
+ 353              	.LVL24:
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 13
+
+
+ 354              	.LFB2612:
+ 157:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ 355              		.loc 1 157 82 is_stmt 1 view -0
+ 356              		.cfi_startproc
+ 357              		@ args = 0, pretend = 0, frame = 0
+ 358              		@ frame_needed = 0, uses_anonymous_args = 0
+ 158:Frame.cpp     ****     pthis->SendDMAData(pthis->m_pFIFO->m_CmdCASET[pthis->m_FIFO_out].m_Data, 4, cRBG_Frame::sendRAS
+ 359              		.loc 1 158 5 view .LVU83
+ 159:Frame.cpp     **** }
+ 360              		.loc 1 159 70 is_stmt 0 view .LVU84
+ 361 0000 B0F8D230 		ldrh	r3, [r0, #210]
+ 362              	.LBB88:
+ 363              	.LBB89:
+  92:TFT_SPI.h     ****         m_spi.DmaTransmit(buff, size, NULL, end_callback, callback_context);
+ 364              		.loc 2 92 19 view .LVU85
+ 365 0004 0121     		movs	r1, #1
+ 366              	.LVL25:
+  92:TFT_SPI.h     ****         m_spi.DmaTransmit(buff, size, NULL, end_callback, callback_context);
+ 367              		.loc 2 92 19 view .LVU86
+ 368              	.LBE89:
+ 369              	.LBE88:
+ 159:Frame.cpp     **** }
+ 370              		.loc 1 159 70 view .LVU87
+ 371 0006 D0F8CC20 		ldr	r2, [r0, #204]
+ 372 000a 03EB8303 		add	r3, r3, r3, lsl #2
+ 373 000e 0B44     		add	r3, r3, r1
+ 157:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ 374              		.loc 1 157 82 view .LVU88
+ 375 0010 70B5     		push	{r4, r5, r6, lr}
+ 376              		.cfi_def_cfa_offset 16
+ 377              		.cfi_offset 4, -16
+ 378              		.cfi_offset 5, -12
+ 379              		.cfi_offset 6, -8
+ 380              		.cfi_offset 14, -4
+ 159:Frame.cpp     **** }
+ 381              		.loc 1 159 70 view .LVU89
+ 382 0012 D518     		adds	r5, r2, r3
+ 157:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ 383              		.loc 1 157 82 view .LVU90
+ 384 0014 82B0     		sub	sp, sp, #8
+ 385              		.cfi_def_cfa_offset 24
+ 157:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ 386              		.loc 1 157 82 view .LVU91
+ 387 0016 0446     		mov	r4, r0
+ 388              	.LVL26:
+ 159:Frame.cpp     **** }
+ 389              		.loc 1 159 5 is_stmt 1 view .LVU92
+ 390              	.LBB91:
+ 391              	.LBI88:
+  90:TFT_SPI.h     ****     {   
+ 392              		.loc 2 90 17 view .LVU93
+ 393              	.LBB90:
+  92:TFT_SPI.h     ****         m_spi.DmaTransmit(buff, size, NULL, end_callback, callback_context);
+ 394              		.loc 2 92 9 view .LVU94
+ 395              		.loc 2 93 26 is_stmt 0 view .LVU95
+ 396 0018 064E     		ldr	r6, .L22
+  92:TFT_SPI.h     ****         m_spi.DmaTransmit(buff, size, NULL, end_callback, callback_context);
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 14
+
+
+ 397              		.loc 2 92 19 view .LVU96
+ 398 001a 4030     		adds	r0, r0, #64
+ 399              	.LVL27:
+  92:TFT_SPI.h     ****         m_spi.DmaTransmit(buff, size, NULL, end_callback, callback_context);
+ 400              		.loc 2 92 19 view .LVU97
+ 401 001c FFF7FEFF 		bl	_ZN5daisy4GPIO5WriteEb
+ 402              	.LVL28:
+ 403              		.loc 2 93 9 is_stmt 1 view .LVU98
+ 404              		.loc 2 93 26 is_stmt 0 view .LVU99
+ 405 0020 0023     		movs	r3, #0
+ 406 0022 0422     		movs	r2, #4
+ 407 0024 2946     		mov	r1, r5
+ 408 0026 2046     		mov	r0, r4
+ 409 0028 0194     		str	r4, [sp, #4]
+ 410 002a 0096     		str	r6, [sp]
+ 411 002c FFF7FEFF 		bl	_ZN5daisy9SpiHandle11DmaTransmitEPhjPFvPvEPFvS2_NS0_6ResultEES2_
+ 412              	.LVL29:
+ 413              		.loc 2 93 26 view .LVU100
+ 414              	.LBE90:
+ 415              	.LBE91:
+ 160:Frame.cpp     **** // Comande RASET
+ 416              		.loc 1 160 1 view .LVU101
+ 417 0030 02B0     		add	sp, sp, #8
+ 418              		.cfi_def_cfa_offset 16
+ 419              		@ sp needed
+ 420 0032 70BD     		pop	{r4, r5, r6, pc}
+ 421              	.LVL30:
+ 422              	.L23:
+ 160:Frame.cpp     **** // Comande RASET
+ 423              		.loc 1 160 1 view .LVU102
+ 424              		.align	2
+ 425              	.L22:
+ 426 0034 00000000 		.word	_ZN10cRBG_Frame15sendRASETDMACmdEPvN5daisy9SpiHandle6ResultE
+ 427              		.cfi_endproc
+ 428              	.LFE2612:
+ 430              		.section	.text._ZN10cRBG_Frame15sendRAWWRDMACmdEPvN5daisy9SpiHandle6ResultE,"ax",%progbits
+ 431              		.align	1
+ 432              		.p2align 2,,3
+ 433              		.global	_ZN10cRBG_Frame15sendRAWWRDMACmdEPvN5daisy9SpiHandle6ResultE
+ 434              		.syntax unified
+ 435              		.thumb
+ 436              		.thumb_func
+ 437              		.fpu fpv5-d16
+ 439              	_ZN10cRBG_Frame15sendRAWWRDMACmdEPvN5daisy9SpiHandle6ResultE:
+ 440              	.LVL31:
+ 441              	.LFB2615:
+ 171:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ 442              		.loc 1 171 81 is_stmt 1 view -0
+ 443              		.cfi_startproc
+ 444              		@ args = 0, pretend = 0, frame = 0
+ 445              		@ frame_needed = 0, uses_anonymous_args = 0
+ 172:Frame.cpp     ****     pthis->SendDMACommand(&pthis->m_pFIFO->m_CmdRAWWR[pthis->m_FIFO_out].m_Commande, cRBG_Frame::se
+ 446              		.loc 1 172 5 view .LVU104
+ 173:Frame.cpp     **** }
+ 447              		.loc 1 173 26 is_stmt 0 view .LVU105
+ 448 0000 B0F8D230 		ldrh	r3, [r0, #210]
+ 449              	.LBB94:
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 15
+
+
+ 450              	.LBB95:
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 451              		.loc 2 84 19 view .LVU106
+ 452 0004 0021     		movs	r1, #0
+ 453              	.LVL32:
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 454              		.loc 2 84 19 view .LVU107
+ 455              	.LBE95:
+ 456              	.LBE94:
+ 173:Frame.cpp     **** }
+ 457              		.loc 1 173 26 view .LVU108
+ 458 0006 D0F8CC20 		ldr	r2, [r0, #204]
+ 171:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ 459              		.loc 1 171 81 view .LVU109
+ 460 000a 70B5     		push	{r4, r5, r6, lr}
+ 461              		.cfi_def_cfa_offset 16
+ 462              		.cfi_offset 4, -16
+ 463              		.cfi_offset 5, -12
+ 464              		.cfi_offset 6, -8
+ 465              		.cfi_offset 14, -4
+ 173:Frame.cpp     **** }
+ 466              		.loc 1 173 26 view .LVU110
+ 467 000c 03EB4305 		add	r5, r3, r3, lsl #1
+ 171:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ 468              		.loc 1 171 81 view .LVU111
+ 469 0010 82B0     		sub	sp, sp, #8
+ 470              		.cfi_def_cfa_offset 24
+ 171:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ 471              		.loc 1 171 81 view .LVU112
+ 472 0012 0446     		mov	r4, r0
+ 473              	.LVL33:
+ 173:Frame.cpp     **** }
+ 474              		.loc 1 173 5 is_stmt 1 view .LVU113
+ 475              	.LBB99:
+ 476              	.LBB96:
+  85:TFT_SPI.h     ****     }
+ 477              		.loc 2 85 26 is_stmt 0 view .LVU114
+ 478 0014 084E     		ldr	r6, .L26
+ 479              	.LBE96:
+ 480              	.LBE99:
+ 173:Frame.cpp     **** }
+ 481              		.loc 1 173 26 view .LVU115
+ 482 0016 03EB4523 		add	r3, r3, r5, lsl #9
+ 483              	.LBB100:
+ 484              	.LBB97:
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 485              		.loc 2 84 19 view .LVU116
+ 486 001a 4030     		adds	r0, r0, #64
+ 487              	.LVL34:
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 488              		.loc 2 84 19 view .LVU117
+ 489              	.LBE97:
+ 490              	.LBE100:
+ 173:Frame.cpp     **** }
+ 491              		.loc 1 173 26 view .LVU118
+ 492 001c 6433     		adds	r3, r3, #100
+ 493 001e D518     		adds	r5, r2, r3
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 16
+
+
+ 494              	.LVL35:
+ 495              	.LBB101:
+ 496              	.LBI94:
+  82:TFT_SPI.h     ****     {
+ 497              		.loc 2 82 17 is_stmt 1 view .LVU119
+ 498              	.LBB98:
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 499              		.loc 2 84 9 view .LVU120
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 500              		.loc 2 84 19 is_stmt 0 view .LVU121
+ 501 0020 FFF7FEFF 		bl	_ZN5daisy4GPIO5WriteEb
+ 502              	.LVL36:
+  85:TFT_SPI.h     ****     }
+ 503              		.loc 2 85 9 is_stmt 1 view .LVU122
+  85:TFT_SPI.h     ****     }
+ 504              		.loc 2 85 26 is_stmt 0 view .LVU123
+ 505 0024 0023     		movs	r3, #0
+ 506 0026 0122     		movs	r2, #1
+ 507 0028 2946     		mov	r1, r5
+ 508 002a 2046     		mov	r0, r4
+ 509 002c 0194     		str	r4, [sp, #4]
+ 510 002e 0096     		str	r6, [sp]
+ 511 0030 FFF7FEFF 		bl	_ZN5daisy9SpiHandle11DmaTransmitEPhjPFvPvEPFvS2_NS0_6ResultEES2_
+ 512              	.LVL37:
+  85:TFT_SPI.h     ****     }
+ 513              		.loc 2 85 26 view .LVU124
+ 514              	.LBE98:
+ 515              	.LBE101:
+ 174:Frame.cpp     **** void cRBG_Frame::sendRAWWRDMAData(void* context, daisy::SpiHandle::Result result){
+ 516              		.loc 1 174 1 view .LVU125
+ 517 0034 02B0     		add	sp, sp, #8
+ 518              		.cfi_def_cfa_offset 16
+ 519              		@ sp needed
+ 520 0036 70BD     		pop	{r4, r5, r6, pc}
+ 521              	.LVL38:
+ 522              	.L27:
+ 174:Frame.cpp     **** void cRBG_Frame::sendRAWWRDMAData(void* context, daisy::SpiHandle::Result result){
+ 523              		.loc 1 174 1 view .LVU126
+ 524              		.align	2
+ 525              	.L26:
+ 526 0038 00000000 		.word	_ZN10cRBG_Frame16sendRAWWRDMADataEPvN5daisy9SpiHandle6ResultE
+ 527              		.cfi_endproc
+ 528              	.LFE2615:
+ 530              		.section	.text._ZN10cRBG_Frame15sendRASETDMACmdEPvN5daisy9SpiHandle6ResultE,"ax",%progbits
+ 531              		.align	1
+ 532              		.p2align 2,,3
+ 533              		.global	_ZN10cRBG_Frame15sendRASETDMACmdEPvN5daisy9SpiHandle6ResultE
+ 534              		.syntax unified
+ 535              		.thumb
+ 536              		.thumb_func
+ 537              		.fpu fpv5-d16
+ 539              	_ZN10cRBG_Frame15sendRASETDMACmdEPvN5daisy9SpiHandle6ResultE:
+ 540              	.LVL39:
+ 541              	.LFB2613:
+ 162:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ 542              		.loc 1 162 81 is_stmt 1 view -0
+ 543              		.cfi_startproc
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 17
+
+
+ 544              		@ args = 0, pretend = 0, frame = 0
+ 545              		@ frame_needed = 0, uses_anonymous_args = 0
+ 163:Frame.cpp     ****     pthis->SendDMACommand(&pthis->m_pFIFO->m_CmdRASET[pthis->m_FIFO_out].m_Commande, cRBG_Frame::se
+ 546              		.loc 1 163 5 view .LVU128
+ 164:Frame.cpp     **** }
+ 547              		.loc 1 164 26 is_stmt 0 view .LVU129
+ 548 0000 B0F8D230 		ldrh	r3, [r0, #210]
+ 549              	.LBB104:
+ 550              	.LBB105:
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 551              		.loc 2 84 19 view .LVU130
+ 552 0004 0021     		movs	r1, #0
+ 553              	.LVL40:
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 554              		.loc 2 84 19 view .LVU131
+ 555              	.LBE105:
+ 556              	.LBE104:
+ 164:Frame.cpp     **** }
+ 557              		.loc 1 164 26 view .LVU132
+ 558 0006 D0F8CC20 		ldr	r2, [r0, #204]
+ 559 000a 03EB8303 		add	r3, r3, r3, lsl #2
+ 560 000e 3233     		adds	r3, r3, #50
+ 162:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ 561              		.loc 1 162 81 view .LVU133
+ 562 0010 70B5     		push	{r4, r5, r6, lr}
+ 563              		.cfi_def_cfa_offset 16
+ 564              		.cfi_offset 4, -16
+ 565              		.cfi_offset 5, -12
+ 566              		.cfi_offset 6, -8
+ 567              		.cfi_offset 14, -4
+ 164:Frame.cpp     **** }
+ 568              		.loc 1 164 26 view .LVU134
+ 569 0012 D518     		adds	r5, r2, r3
+ 162:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ 570              		.loc 1 162 81 view .LVU135
+ 571 0014 82B0     		sub	sp, sp, #8
+ 572              		.cfi_def_cfa_offset 24
+ 162:Frame.cpp     ****     cRBG_Frame *pthis = (cRBG_Frame *)context;
+ 573              		.loc 1 162 81 view .LVU136
+ 574 0016 0446     		mov	r4, r0
+ 575              	.LVL41:
+ 164:Frame.cpp     **** }
+ 576              		.loc 1 164 5 is_stmt 1 view .LVU137
+ 577              	.LBB107:
+ 578              	.LBI104:
+  82:TFT_SPI.h     ****     {
+ 579              		.loc 2 82 17 view .LVU138
+ 580              	.LBB106:
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 581              		.loc 2 84 9 view .LVU139
+  85:TFT_SPI.h     ****     }
+ 582              		.loc 2 85 26 is_stmt 0 view .LVU140
+ 583 0018 064E     		ldr	r6, .L30
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 584              		.loc 2 84 19 view .LVU141
+ 585 001a 4030     		adds	r0, r0, #64
+ 586              	.LVL42:
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 18
+
+
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 587              		.loc 2 84 19 view .LVU142
+ 588 001c FFF7FEFF 		bl	_ZN5daisy4GPIO5WriteEb
+ 589              	.LVL43:
+  85:TFT_SPI.h     ****     }
+ 590              		.loc 2 85 9 is_stmt 1 view .LVU143
+  85:TFT_SPI.h     ****     }
+ 591              		.loc 2 85 26 is_stmt 0 view .LVU144
+ 592 0020 0023     		movs	r3, #0
+ 593 0022 0122     		movs	r2, #1
+ 594 0024 2946     		mov	r1, r5
+ 595 0026 2046     		mov	r0, r4
+ 596 0028 0194     		str	r4, [sp, #4]
+ 597 002a 0096     		str	r6, [sp]
+ 598 002c FFF7FEFF 		bl	_ZN5daisy9SpiHandle11DmaTransmitEPhjPFvPvEPFvS2_NS0_6ResultEES2_
+ 599              	.LVL44:
+  85:TFT_SPI.h     ****     }
+ 600              		.loc 2 85 26 view .LVU145
+ 601              	.LBE106:
+ 602              	.LBE107:
+ 165:Frame.cpp     **** void cRBG_Frame::sendRASETDMAData(void* context, daisy::SpiHandle::Result result){
+ 603              		.loc 1 165 1 view .LVU146
+ 604 0030 02B0     		add	sp, sp, #8
+ 605              		.cfi_def_cfa_offset 16
+ 606              		@ sp needed
+ 607 0032 70BD     		pop	{r4, r5, r6, pc}
+ 608              	.LVL45:
+ 609              	.L31:
+ 165:Frame.cpp     **** void cRBG_Frame::sendRASETDMAData(void* context, daisy::SpiHandle::Result result){
+ 610              		.loc 1 165 1 view .LVU147
+ 611              		.align	2
+ 612              	.L30:
+ 613 0034 00000000 		.word	_ZN10cRBG_Frame16sendRASETDMADataEPvN5daisy9SpiHandle6ResultE
+ 614              		.cfi_endproc
+ 615              	.LFE2613:
+ 617              		.section	.text._ZN10cRBG_Frame7sendDMAEv,"ax",%progbits
+ 618              		.align	1
+ 619              		.p2align 2,,3
+ 620              		.global	_ZN10cRBG_Frame7sendDMAEv
+ 621              		.syntax unified
+ 622              		.thumb
+ 623              		.thumb_func
+ 624              		.fpu fpv5-d16
+ 626              	_ZN10cRBG_Frame7sendDMAEv:
+ 627              	.LVL46:
+ 628              	.LFB2611:
+ 142:Frame.cpp     ****     // Le FIFO n'est-il vide ou en cours de transmission
+ 629              		.loc 1 142 27 is_stmt 1 view -0
+ 630              		.cfi_startproc
+ 631              		@ args = 0, pretend = 0, frame = 0
+ 632              		@ frame_needed = 0, uses_anonymous_args = 0
+ 144:Frame.cpp     ****     if((m_FIFO_NbElements == 0) || (m_Busy == true)){
+ 633              		.loc 1 144 5 view .LVU149
+ 634              	.LBB126:
+ 635              	.LBI126:
+ 636              		.file 3 "../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h"
+   1:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** /**************************************************************************//**
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 19
+
+
+   2:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****  * @file     cmsis_gcc.h
+   3:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****  * @brief    CMSIS compiler GCC header file
+   4:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****  * @version  V5.0.1
+   5:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****  * @date     02. February 2017
+   6:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****  ******************************************************************************/
+   7:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** /*
+   8:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****  * Copyright (c) 2009-2017 ARM Limited. All rights reserved.
+   9:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****  *
+  10:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****  * SPDX-License-Identifier: Apache-2.0
+  11:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****  *
+  12:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****  * Licensed under the Apache License, Version 2.0 (the License); you may
+  13:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****  * not use this file except in compliance with the License.
+  14:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****  * You may obtain a copy of the License at
+  15:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****  *
+  16:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****  * www.apache.org/licenses/LICENSE-2.0
+  17:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****  *
+  18:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****  * Unless required by applicable law or agreed to in writing, software
+  19:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****  * distributed under the License is distributed on an AS IS BASIS, WITHOUT
+  20:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****  * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  21:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****  * See the License for the specific language governing permissions and
+  22:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****  * limitations under the License.
+  23:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****  */
+  24:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** 
+  25:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #ifndef __CMSIS_GCC_H
+  26:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #define __CMSIS_GCC_H
+  27:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** 
+  28:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** /* ignore some GCC warnings */
+  29:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #pragma GCC diagnostic push
+  30:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #pragma GCC diagnostic ignored "-Wsign-conversion"
+  31:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #pragma GCC diagnostic ignored "-Wconversion"
+  32:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #pragma GCC diagnostic ignored "-Wunused-parameter"
+  33:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** 
+  34:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** /* CMSIS compiler specific defines */
+  35:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #ifndef   __ASM
+  36:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****   #define __ASM                     __asm
+  37:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #endif
+  38:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #ifndef   __INLINE
+  39:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****   #define __INLINE                  inline
+  40:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #endif
+  41:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #ifndef   __STATIC_INLINE
+  42:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****   #define __STATIC_INLINE           static inline
+  43:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #endif
+  44:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #ifndef   __NO_RETURN
+  45:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****   #define __NO_RETURN               __attribute__((noreturn))
+  46:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #endif
+  47:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #ifndef   __USED
+  48:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****   #define __USED                    __attribute__((used))
+  49:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #endif
+  50:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #ifndef   __WEAK
+  51:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****   #define __WEAK                    __attribute__((weak))
+  52:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #endif
+  53:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #ifndef   __UNALIGNED_UINT32
+  54:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #pragma GCC diagnostic push
+  55:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #pragma GCC diagnostic ignored "-Wpacked"
+  56:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #pragma GCC diagnostic ignored "-Wattributes"
+  57:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****   struct __attribute__((packed)) T_UINT32 { uint32_t v; };
+  58:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #pragma GCC diagnostic pop
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 20
+
+
+  59:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****   #define __UNALIGNED_UINT32(x)     (((struct T_UINT32 *)(x))->v)
+  60:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #endif
+  61:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #ifndef   __ALIGNED
+  62:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****   #define __ALIGNED(x)              __attribute__((aligned(x)))
+  63:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #endif
+  64:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #ifndef   __PACKED
+  65:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****   #define __PACKED                  __attribute__((packed, aligned(1)))
+  66:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #endif
+  67:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #ifndef   __PACKED_STRUCT
+  68:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****   #define __PACKED_STRUCT           struct __attribute__((packed, aligned(1)))
+  69:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** #endif
+  70:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** 
+  71:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** 
+  72:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** /* ###########################  Core Function Access  ########################### */
+  73:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** /** \ingroup  CMSIS_Core_FunctionInterface
+  74:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****     \defgroup CMSIS_Core_RegAccFunctions CMSIS Core Register Access Functions
+  75:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****   @{
+  76:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****  */
+  77:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** 
+  78:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** /**
+  79:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****   \brief   Enable IRQ Interrupts
+  80:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****   \details Enables IRQ interrupts by clearing the I-bit in the CPSR.
+  81:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****            Can only be executed in Privileged modes.
+  82:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****  */
+  83:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** __attribute__((always_inline)) __STATIC_INLINE void __enable_irq(void)
+  84:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** {
+  85:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****   __ASM volatile ("cpsie i" : : : "memory");
+  86:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** }
+  87:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** 
+  88:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** 
+  89:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** /**
+  90:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****   \brief   Disable IRQ Interrupts
+  91:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****   \details Disables IRQ interrupts by setting the I-bit in the CPSR.
+  92:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****            Can only be executed in Privileged modes.
+  93:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****  */
+  94:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** __attribute__((always_inline)) __STATIC_INLINE void __disable_irq(void)
+ 637              		.loc 3 94 53 view .LVU150
+ 638              	.LBB127:
+  95:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** {
+  96:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h ****   __ASM volatile ("cpsid i" : : : "memory");
+ 639              		.loc 3 96 3 view .LVU151
+ 640              		.syntax unified
+ 641              	@ 96 "../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h" 1
+ 642 0000 72B6     		cpsid i
+ 643              	@ 0 "" 2
+ 644              		.thumb
+ 645              		.syntax unified
+ 646              	.LBE127:
+ 647              	.LBE126:
+ 145:Frame.cpp     ****         __enable_irq();
+ 648              		.loc 1 145 5 view .LVU152
+ 649 0002 B0F8D430 		ldrh	r3, [r0, #212]
+ 650 0006 23B3     		cbz	r3, .L40
+ 142:Frame.cpp     ****     // Le FIFO n'est-il vide ou en cours de transmission
+ 651              		.loc 1 142 27 is_stmt 0 discriminator 1 view .LVU153
+ 652 0008 F0B5     		push	{r4, r5, r6, r7, lr}
+ 653              		.cfi_def_cfa_offset 20
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 21
+
+
+ 654              		.cfi_offset 4, -20
+ 655              		.cfi_offset 5, -16
+ 656              		.cfi_offset 6, -12
+ 657              		.cfi_offset 7, -8
+ 658              		.cfi_offset 14, -4
+ 145:Frame.cpp     ****         __enable_irq();
+ 659              		.loc 1 145 33 discriminator 1 view .LVU154
+ 660 000a 90F8D660 		ldrb	r6, [r0, #214]	@ zero_extendqisi2
+ 142:Frame.cpp     ****     // Le FIFO n'est-il vide ou en cours de transmission
+ 661              		.loc 1 142 27 discriminator 1 view .LVU155
+ 662 000e 83B0     		sub	sp, sp, #12
+ 663              		.cfi_def_cfa_offset 32
+ 664 0010 0446     		mov	r4, r0
+ 145:Frame.cpp     ****         __enable_irq();
+ 665              		.loc 1 145 33 discriminator 1 view .LVU156
+ 666 0012 1EB1     		cbz	r6, .L34
+ 146:Frame.cpp     ****         return false;
+ 667              		.loc 1 146 9 is_stmt 1 view .LVU157
+ 668              	.LBB128:
+ 669              	.LBI128:
+  83:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** {
+ 670              		.loc 3 83 53 view .LVU158
+ 671              	.LBB129:
+  85:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** }
+ 672              		.loc 3 85 3 view .LVU159
+ 673              		.syntax unified
+ 674              	@ 85 "../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h" 1
+ 675 0014 62B6     		cpsie i
+ 676              	@ 0 "" 2
+ 677              		.thumb
+ 678              		.syntax unified
+ 679              	.LBE129:
+ 680              	.LBE128:
+ 147:Frame.cpp     ****     }
+ 681              		.loc 1 147 9 view .LVU160
+ 147:Frame.cpp     ****     }
+ 682              		.loc 1 147 16 is_stmt 0 view .LVU161
+ 683 0016 0020     		movs	r0, #0
+ 684              	.LVL47:
+ 155:Frame.cpp     **** 
+ 685              		.loc 1 155 1 view .LVU162
+ 686 0018 03B0     		add	sp, sp, #12
+ 687              		.cfi_remember_state
+ 688              		.cfi_def_cfa_offset 20
+ 689              		@ sp needed
+ 690 001a F0BD     		pop	{r4, r5, r6, r7, pc}
+ 691              	.LVL48:
+ 692              	.L34:
+ 693              		.cfi_restore_state
+ 694              	.LBB131:
+ 695              	.LBI131:
+ 142:Frame.cpp     ****     // Le FIFO n'est-il vide ou en cours de transmission
+ 696              		.loc 1 142 6 is_stmt 1 view .LVU163
+ 697              	.LBB132:
+ 149:Frame.cpp     **** 
+ 698              		.loc 1 149 5 view .LVU164
+ 699              	.LBB133:
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 22
+
+
+ 700              	.LBI133:
+  83:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** {
+ 701              		.loc 3 83 53 view .LVU165
+ 702              	.LBB134:
+  85:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** }
+ 703              		.loc 3 85 3 view .LVU166
+ 704              		.syntax unified
+ 705              	@ 85 "../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h" 1
+ 706 001c 62B6     		cpsie i
+ 707              	@ 0 "" 2
+ 708              		.thumb
+ 709              		.syntax unified
+ 710              	.LBE134:
+ 711              	.LBE133:
+ 152:Frame.cpp     ****     SendDMACommand(&m_pFIFO->m_CmdCASET[m_FIFO_out].m_Commande, cRBG_Frame::sendCASETDMAData, this)
+ 712              		.loc 1 152 5 view .LVU167
+ 153:Frame.cpp     ****     return true;
+ 713              		.loc 1 153 19 is_stmt 0 view .LVU168
+ 714 001e B0F8D230 		ldrh	r3, [r0, #210]
+ 152:Frame.cpp     ****     SendDMACommand(&m_pFIFO->m_CmdCASET[m_FIFO_out].m_Commande, cRBG_Frame::sendCASETDMAData, this)
+ 715              		.loc 1 152 12 view .LVU169
+ 716 0022 0125     		movs	r5, #1
+ 153:Frame.cpp     ****     return true;
+ 717              		.loc 1 153 19 view .LVU170
+ 718 0024 D0F8CC10 		ldr	r1, [r0, #204]
+ 719              	.LBB135:
+ 720              	.LBB136:
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 721              		.loc 2 84 19 view .LVU171
+ 722 0028 4030     		adds	r0, r0, #64
+ 723              	.LVL49:
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 724              		.loc 2 84 19 view .LVU172
+ 725              	.LBE136:
+ 726              	.LBE135:
+ 153:Frame.cpp     ****     return true;
+ 727              		.loc 1 153 19 view .LVU173
+ 728 002a 03EB8303 		add	r3, r3, r3, lsl #2
+ 152:Frame.cpp     ****     SendDMACommand(&m_pFIFO->m_CmdCASET[m_FIFO_out].m_Commande, cRBG_Frame::sendCASETDMAData, this)
+ 729              		.loc 1 152 12 view .LVU174
+ 730 002e 80F89650 		strb	r5, [r0, #150]
+ 153:Frame.cpp     ****     return true;
+ 731              		.loc 1 153 5 is_stmt 1 view .LVU175
+ 153:Frame.cpp     ****     return true;
+ 732              		.loc 1 153 19 is_stmt 0 view .LVU176
+ 733 0032 CF18     		adds	r7, r1, r3
+ 734              	.LVL50:
+ 735              	.LBB139:
+ 736              	.LBI135:
+  82:TFT_SPI.h     ****     {
+ 737              		.loc 2 82 17 is_stmt 1 view .LVU177
+ 738              	.LBB137:
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 739              		.loc 2 84 9 view .LVU178
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 740              		.loc 2 84 19 is_stmt 0 view .LVU179
+ 741 0034 3146     		mov	r1, r6
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 23
+
+
+ 742 0036 FFF7FEFF 		bl	_ZN5daisy4GPIO5WriteEb
+ 743              	.LVL51:
+  85:TFT_SPI.h     ****     }
+ 744              		.loc 2 85 9 is_stmt 1 view .LVU180
+  85:TFT_SPI.h     ****     }
+ 745              		.loc 2 85 26 is_stmt 0 view .LVU181
+ 746 003a 074A     		ldr	r2, .L43
+ 747 003c 3346     		mov	r3, r6
+ 748 003e 3946     		mov	r1, r7
+ 749 0040 0092     		str	r2, [sp]
+ 750 0042 2046     		mov	r0, r4
+ 751 0044 2A46     		mov	r2, r5
+ 752 0046 0194     		str	r4, [sp, #4]
+ 753 0048 FFF7FEFF 		bl	_ZN5daisy9SpiHandle11DmaTransmitEPhjPFvPvEPFvS2_NS0_6ResultEES2_
+ 754              	.LVL52:
+  85:TFT_SPI.h     ****     }
+ 755              		.loc 2 85 26 view .LVU182
+ 756              	.LBE137:
+ 757              	.LBE139:
+ 154:Frame.cpp     **** }
+ 758              		.loc 1 154 5 is_stmt 1 view .LVU183
+ 759              	.LBB140:
+ 760              	.LBB138:
+  85:TFT_SPI.h     ****     }
+ 761              		.loc 2 85 26 is_stmt 0 view .LVU184
+ 762 004c 2846     		mov	r0, r5
+ 763              	.LBE138:
+ 764              	.LBE140:
+ 765              	.LBE132:
+ 766              	.LBE131:
+ 155:Frame.cpp     **** 
+ 767              		.loc 1 155 1 view .LVU185
+ 768 004e 03B0     		add	sp, sp, #12
+ 769              		.cfi_def_cfa_offset 20
+ 770              		@ sp needed
+ 771 0050 F0BD     		pop	{r4, r5, r6, r7, pc}
+ 772              	.LVL53:
+ 773              	.L40:
+ 774              		.cfi_def_cfa_offset 0
+ 775              		.cfi_restore 4
+ 776              		.cfi_restore 5
+ 777              		.cfi_restore 6
+ 778              		.cfi_restore 7
+ 779              		.cfi_restore 14
+ 146:Frame.cpp     ****         return false;
+ 780              		.loc 1 146 9 is_stmt 1 view .LVU186
+ 781              	.LBB141:
+  83:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** {
+ 782              		.loc 3 83 53 view .LVU187
+ 783              	.LBB130:
+  85:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** }
+ 784              		.loc 3 85 3 view .LVU188
+ 785              		.syntax unified
+ 786              	@ 85 "../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h" 1
+ 787 0052 62B6     		cpsie i
+ 788              	@ 0 "" 2
+ 789              		.thumb
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 24
+
+
+ 790              		.syntax unified
+ 791              	.LBE130:
+ 792              	.LBE141:
+ 147:Frame.cpp     ****     }
+ 793              		.loc 1 147 9 view .LVU189
+ 147:Frame.cpp     ****     }
+ 794              		.loc 1 147 16 is_stmt 0 view .LVU190
+ 795 0054 0020     		movs	r0, #0
+ 796              	.LVL54:
+ 155:Frame.cpp     **** 
+ 797              		.loc 1 155 1 view .LVU191
+ 798 0056 7047     		bx	lr
+ 799              	.L44:
+ 800              		.align	2
+ 801              	.L43:
+ 802 0058 00000000 		.word	_ZN10cRBG_Frame16sendCASETDMADataEPvN5daisy9SpiHandle6ResultE
+ 803              		.cfi_endproc
+ 804              	.LFE2611:
+ 806              		.section	.text._ZN9Cmd_RAMWR7setDataEttttP10cRBG_Frame,"ax",%progbits
+ 807              		.align	1
+ 808              		.p2align 2,,3
+ 809              		.global	_ZN9Cmd_RAMWR7setDataEttttP10cRBG_Frame
+ 810              		.syntax unified
+ 811              		.thumb
+ 812              		.thumb_func
+ 813              		.fpu fpv5-d16
+ 815              	_ZN9Cmd_RAMWR7setDataEttttP10cRBG_Frame:
+ 816              	.LVL55:
+ 817              	.LFB2618:
+ 198:Frame.cpp     **** 
+ 199:Frame.cpp     **** //***********************************************************************************
+ 200:Frame.cpp     **** // Cmd_RAMWR
+ 201:Frame.cpp     **** //   Commande SPI d'ecriture des pixels 
+ 202:Frame.cpp     **** //***********************************************************************************
+ 203:Frame.cpp     **** 
+ 204:Frame.cpp     **** // --------------------------------------------------------------------------
+ 205:Frame.cpp     **** // Définition des pixels de la frame à transférer
+ 206:Frame.cpp     **** void Cmd_RAMWR::setData(uint16_t x, uint16_t y, uint16_t dx, uint16_t dy, cRBG_Frame *pFrame){
+ 818              		.loc 1 206 94 is_stmt 1 view -0
+ 819              		.cfi_startproc
+ 820              		@ args = 8, pretend = 0, frame = 0
+ 821              		@ frame_needed = 0, uses_anonymous_args = 0
+ 207:Frame.cpp     ****     RGB *pFrameCourant;
+ 822              		.loc 1 207 5 view .LVU193
+ 208:Frame.cpp     ****     RGB *pEndLigne;
+ 823              		.loc 1 208 5 view .LVU194
+ 209:Frame.cpp     ****     uint8_t *pBloc = m_Data;
+ 824              		.loc 1 209 5 view .LVU195
+ 206:Frame.cpp     ****     RGB *pFrameCourant;
+ 825              		.loc 1 206 94 is_stmt 0 view .LVU196
+ 826 0000 2DE9F043 		push	{r4, r5, r6, r7, r8, r9, lr}
+ 827              		.cfi_def_cfa_offset 28
+ 828              		.cfi_offset 4, -28
+ 829              		.cfi_offset 5, -24
+ 830              		.cfi_offset 6, -20
+ 831              		.cfi_offset 7, -16
+ 832              		.cfi_offset 8, -12
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 25
+
+
+ 833              		.cfi_offset 9, -8
+ 834              		.cfi_offset 14, -4
+ 206:Frame.cpp     ****     RGB *pFrameCourant;
+ 835              		.loc 1 206 94 view .LVU197
+ 836 0004 BDF81C80 		ldrh	r8, [sp, #28]
+ 837              	.LVL56:
+ 210:Frame.cpp     **** 
+ 211:Frame.cpp     ****     for (uint16_t PosY = y; PosY <= dy; PosY++){
+ 838              		.loc 1 211 5 is_stmt 1 view .LVU198
+ 839              	.LBB155:
+ 840              		.loc 1 211 34 view .LVU199
+ 841              	.LBE155:
+ 206:Frame.cpp     ****     RGB *pFrameCourant;
+ 842              		.loc 1 206 94 is_stmt 0 view .LVU200
+ 843 0008 089F     		ldr	r7, [sp, #32]
+ 844              	.LBB179:
+ 845              		.loc 1 211 34 view .LVU201
+ 846 000a 4245     		cmp	r2, r8
+ 847 000c 4AD8     		bhi	.L45
+ 848 000e 461C     		adds	r6, r0, #1
+ 849              	.LVL57:
+ 850              	.L52:
+ 212:Frame.cpp     ****         pFrameCourant = pFrame->getPtr(x, PosY);
+ 851              		.loc 1 212 9 is_stmt 1 view .LVU202
+ 852 0010 B7F85C00 		ldrh	r0, [r7, #92]
+ 853 0014 D7F854C0 		ldr	ip, [r7, #84]
+ 854              	.LBB156:
+ 855              	.LBB157:
+ 856              		.file 4 "Frame.h"
+   1:Frame.h       **** //------------------------------------------------------------------------
+   2:Frame.h       **** // Copyright(c) 2024 Dad Desing.
+   3:Frame.h       **** //      Gestion d'une frame de pixel
+   4:Frame.h       **** //      Les pixels sont organisés en bloc de transmission
+   5:Frame.h       **** //      pour une mise à jour optimisé de l'écran
+   6:Frame.h       **** //------------------------------------------------------------------------
+   7:Frame.h       **** #pragma once
+   8:Frame.h       **** #include <stdint.h>
+   9:Frame.h       **** #include "TFT_SPI.h"
+  10:Frame.h       **** #include "Debug.h"
+  11:Frame.h       **** 
+  12:Frame.h       **** #define NB_BLOC (FRAME_GRILLE*FRAME_GRILLE)
+  13:Frame.h       **** #if TFT_COLOR == 16
+  14:Frame.h       ****     #define TAILLE_BLOC (TFT_WIDTH * TFT_HEIGHT * 2) / NB_BLOC
+  15:Frame.h       **** #else
+  16:Frame.h       ****     #define TAILLE_BLOC (TFT_WIDTH * TFT_HEIGHT * 3) / NB_BLOC
+  17:Frame.h       **** #endif
+  18:Frame.h       **** 
+  19:Frame.h       **** //***********************************************************************************
+  20:Frame.h       **** // Cmd_CASET
+  21:Frame.h       **** //   Commande SPI de séléction des colones  
+  22:Frame.h       **** //*********************************************************************************** 
+  23:Frame.h       **** class Cmd_CASET {
+  24:Frame.h       ****     public :
+  25:Frame.h       ****     friend class cRBG_Frame;
+  26:Frame.h       ****     // --------------------------------------------------------------------------
+  27:Frame.h       ****     // Constructeur
+  28:Frame.h       ****     Cmd_CASET(){
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 26
+
+
+  29:Frame.h       ****         m_Commande = TFT_CASET;
+  30:Frame.h       ****     }
+  31:Frame.h       **** 
+  32:Frame.h       ****     // --------------------------------------------------------------------------
+  33:Frame.h       ****     // Définition de l'abcisse de la fenetre
+  34:Frame.h       ****     void setData(uint16_t x, uint16_t dx){
+  35:Frame.h       ****         m_Data[0] = x >> 8;
+  36:Frame.h       ****         m_Data[1] = x & 0xFF;
+  37:Frame.h       ****         m_Data[2] = dx >> 8;
+  38:Frame.h       ****         m_Data[3] = dx & 0xFF;
+  39:Frame.h       ****     }
+  40:Frame.h       ****     
+  41:Frame.h       ****     // --------------------------------------------------------------------------
+  42:Frame.h       ****     // Données de la classe
+  43:Frame.h       ****     protected :
+  44:Frame.h       ****     uint8_t m_Commande;
+  45:Frame.h       ****     uint8_t m_Data[4];
+  46:Frame.h       **** };
+  47:Frame.h       **** 
+  48:Frame.h       **** //***********************************************************************************
+  49:Frame.h       **** // Cmd_RASET
+  50:Frame.h       **** //   Commande SPI de selection des rangées  
+  51:Frame.h       **** //*********************************************************************************** 
+  52:Frame.h       **** class Cmd_RASET {
+  53:Frame.h       ****     public :
+  54:Frame.h       ****     friend class cRBG_Frame;
+  55:Frame.h       **** 
+  56:Frame.h       ****     // --------------------------------------------------------------------------
+  57:Frame.h       ****     // Constructeur
+  58:Frame.h       ****     Cmd_RASET(){
+  59:Frame.h       ****         m_Commande = TFT_RASET;
+  60:Frame.h       ****     }
+  61:Frame.h       ****     
+  62:Frame.h       ****     // --------------------------------------------------------------------------
+  63:Frame.h       ****     // Définition de l'ordonnée de la fenètre
+  64:Frame.h       ****     void setData(uint16_t y, uint16_t dy){
+  65:Frame.h       ****         m_Data[0] = y >> 8;
+  66:Frame.h       ****         m_Data[1] = y & 0xFF;
+  67:Frame.h       ****         m_Data[2] = dy >> 8;
+  68:Frame.h       ****         m_Data[3] = dy & 0xFF;
+  69:Frame.h       ****     }
+  70:Frame.h       **** 
+  71:Frame.h       ****     // --------------------------------------------------------------------------
+  72:Frame.h       ****     // Données de la classe
+  73:Frame.h       ****     protected :
+  74:Frame.h       ****     uint8_t m_Commande;
+  75:Frame.h       ****     uint8_t m_Data[4];
+  76:Frame.h       **** };
+  77:Frame.h       **** 
+  78:Frame.h       **** //***********************************************************************************
+  79:Frame.h       **** // Cmd_RAMWR
+  80:Frame.h       **** //   Commande SPI d'ecriture des pixels 
+  81:Frame.h       **** //***********************************************************************************
+  82:Frame.h       **** class cRBG_Frame;
+  83:Frame.h       **** class Cmd_RAMWR {
+  84:Frame.h       ****     public :
+  85:Frame.h       ****     friend class cRBG_Frame;
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 27
+
+
+  86:Frame.h       **** 
+  87:Frame.h       ****     // --------------------------------------------------------------------------
+  88:Frame.h       ****     // Constructeur
+  89:Frame.h       ****     Cmd_RAMWR(){
+  90:Frame.h       ****         m_Commande = TFT_RAMWR;
+  91:Frame.h       ****     }
+  92:Frame.h       **** 
+  93:Frame.h       ****     // --------------------------------------------------------------------------
+  94:Frame.h       ****     // Définition des pixels de la frame à transférer
+  95:Frame.h       ****     void setData(uint16_t x, uint16_t y, uint16_t dx, uint16_t dy, cRBG_Frame *pFrame);
+  96:Frame.h       **** 
+  97:Frame.h       ****     // --------------------------------------------------------------------------
+  98:Frame.h       ****     // Données de la classe
+  99:Frame.h       ****     protected :
+ 100:Frame.h       ****     uint8_t m_Commande;
+ 101:Frame.h       ****     uint8_t m_Data[TAILLE_BLOC];
+ 102:Frame.h       **** };
+ 103:Frame.h       **** 
+ 104:Frame.h       **** //***********************************************************************************
+ 105:Frame.h       **** // cColor 
+ 106:Frame.h       **** //*********************************************************************************** 
+ 107:Frame.h       **** struct cColor { 
+ 108:Frame.h       ****     // Constructeur
+ 109:Frame.h       ****     cColor(uint8_t R, uint8_t G, uint8_t B, uint8_t Trans=255){
+ 110:Frame.h       ****         m_R = R;
+ 111:Frame.h       ****         m_G = G;
+ 112:Frame.h       ****         m_B = B;
+ 113:Frame.h       ****         m_Trans = Trans;
+ 114:Frame.h       ****     }
+ 115:Frame.h       **** 
+ 116:Frame.h       ****     uint8_t m_R;
+ 117:Frame.h       ****     uint8_t m_G;
+ 118:Frame.h       ****     uint8_t m_B;
+ 119:Frame.h       ****     uint8_t m_Trans;
+ 120:Frame.h       **** };
+ 121:Frame.h       **** 
+ 122:Frame.h       **** //***********************************************************************************
+ 123:Frame.h       **** // RGB
+ 124:Frame.h       **** // Définition d'un pixel RGB 
+ 125:Frame.h       **** //*********************************************************************************** 
+ 126:Frame.h       **** struct RGB {
+ 127:Frame.h       ****     friend class cRBG_Frame;
+ 128:Frame.h       **** 	// --------------------------------------------------------------------------
+ 129:Frame.h       **** 	// Mise à jour d'un pixel et indication que le bloc a changé d'état
+ 130:Frame.h       ****     void inline set(cColor Color){
+ 131:Frame.h       ****         R = Color.m_R;
+ 132:Frame.h       ****         G = Color.m_G;
+ 133:Frame.h       ****         B = Color.m_B;
+ 134:Frame.h       ****         *m_pChange = true;
+ 135:Frame.h       ****     }
+ 136:Frame.h       **** 
+ 137:Frame.h       ****     // --------------------------------------------------------------------------
+ 138:Frame.h       **** 	// Lecture de la composante Rouge 
+ 139:Frame.h       ****     uint8_t inline getR(){
+ 140:Frame.h       ****         return R;
+ 141:Frame.h       ****     }
+ 142:Frame.h       ****     // --------------------------------------------------------------------------
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 28
+
+
+ 143:Frame.h       **** 	// Lecture de la composante Verte 
+ 144:Frame.h       ****     uint8_t inline getG(){
+ 145:Frame.h       ****         return G;
+ 146:Frame.h       ****     }
+ 147:Frame.h       **** 
+ 148:Frame.h       ****     // --------------------------------------------------------------------------
+ 149:Frame.h       **** 	// Lecture de la composante Bleue 
+ 150:Frame.h       ****     uint8_t inline getB(){
+ 151:Frame.h       ****         return B;
+ 152:Frame.h       ****     }
+ 153:Frame.h       **** 
+ 154:Frame.h       ****     // --------------------------------------------------------------------------
+ 155:Frame.h       ****     // Données de la classe
+ 156:Frame.h       ****     protected :
+ 157:Frame.h       ****     uint8_t R;          // Composante Rouge
+ 158:Frame.h       ****     uint8_t G;          // Composante Verte
+ 159:Frame.h       ****     uint8_t B;          // Composante Bleue
+ 160:Frame.h       ****     bool *m_pChange;    // Indicateur de changement d'état (pointe sur un tableau de bloc) 
+ 161:Frame.h       **** };
+ 162:Frame.h       **** 
+ 163:Frame.h       **** //***********************************************************************************
+ 164:Frame.h       **** // cRBG_Frame
+ 165:Frame.h       **** //  Gestion de la framme
+ 166:Frame.h       **** //*********************************************************************************** 
+ 167:Frame.h       **** 
+ 168:Frame.h       **** //   Pour le fonctionnement du DMA cette structure doit être instanciée dans la
+ 169:Frame.h       **** //   mémoire DMA_BUFFER_MEM_SECTION
+ 170:Frame.h       **** struct FIFO_Data {
+ 171:Frame.h       ****     Cmd_CASET m_CmdCASET[SIZE_FIFO];
+ 172:Frame.h       ****     Cmd_RASET m_CmdRASET[SIZE_FIFO];
+ 173:Frame.h       ****     Cmd_RAMWR m_CmdRAWWR[SIZE_FIFO];
+ 174:Frame.h       **** };
+ 175:Frame.h       **** 
+ 176:Frame.h       **** // ================================
+ 177:Frame.h       **** // cRBG_Frame
+ 178:Frame.h       **** class cRBG_Frame  : protected TFT_SPI {
+ 179:Frame.h       ****     public:
+ 180:Frame.h       ****     // --------------------------------------------------------------------------
+ 181:Frame.h       ****     // Constructeur 
+ 182:Frame.h       ****     // FIFO_Data doit être instanciée dans la mémoire DMA_BUFFER_MEM_SECTION
+ 183:Frame.h       ****     cRBG_Frame(){
+ 184:Frame.h       ****         m_FIFO_in = 0;
+ 185:Frame.h       ****         m_FIFO_out = 0;
+ 186:Frame.h       ****         m_FIFO_NbElements = 0;
+ 187:Frame.h       ****         m_Busy = false;
+ 188:Frame.h       ****     }
+ 189:Frame.h       **** 
+ 190:Frame.h       ****     // ==========================================================================
+ 191:Frame.h       ****     // Configuration
+ 192:Frame.h       **** 
+ 193:Frame.h       ****     // --------------------------------------------------------------------------
+ 194:Frame.h       ****     // Initialisation de la classe.
+ 195:Frame.h       ****     // Doit être appelée avant toute utilisation (aucune vérification réalisée) 
+ 196:Frame.h       ****     void setFrame(RGB *pFrameBuff,  FIFO_Data *pFIFO_Data, uint16_t Width,  uint16_t Height);
+ 197:Frame.h       ****     
+ 198:Frame.h       ****     // --------------------------------------------------------------------------
+ 199:Frame.h       ****     // Configuration l'orientation de la frame et de l'écran
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 29
+
+
+ 200:Frame.h       ****     void setFrameRotation (Rotation r);
+ 201:Frame.h       **** 
+ 202:Frame.h       ****     // ==========================================================================
+ 203:Frame.h       ****     // Lecture / Ecriture
+ 204:Frame.h       **** 
+ 205:Frame.h       ****     // --------------------------------------------------------------------------
+ 206:Frame.h       ****     // Retourne l'adresse d'un pixel à partir de ses coordonnées         
+ 207:Frame.h       ****     inline RGB *getPtr(uint16_t x, uint16_t y){
+ 208:Frame.h       ****         if(x>=m_Width) x = m_Width-1;
+ 857              		.loc 4 208 9 is_stmt 0 view .LVU203
+ 858 0018 8142     		cmp	r1, r0
+ 859 001a B7F85E50 		ldrh	r5, [r7, #94]
+ 860              	.LVL58:
+ 861              		.loc 4 208 9 view .LVU204
+ 862              	.LBE157:
+ 863              	.LBI156:
+ 207:Frame.h       ****         if(x>=m_Width) x = m_Width-1;
+ 864              		.loc 4 207 17 is_stmt 1 view .LVU205
+ 865              	.LBB158:
+ 866              		.loc 4 208 9 view .LVU206
+ 867 001e 45D3     		bcc	.L53
+ 868              		.loc 4 208 24 view .LVU207
+ 869              		.loc 4 208 26 is_stmt 0 view .LVU208
+ 870 0020 441E     		subs	r4, r0, #1
+ 209:Frame.h       ****         if(y>=m_Height) y = m_Height-1;
+ 871              		.loc 4 209 9 view .LVU209
+ 872 0022 9542     		cmp	r5, r2
+ 208:Frame.h       ****         if(y>=m_Height) y = m_Height-1;
+ 873              		.loc 4 208 26 view .LVU210
+ 874 0024 1FFA84F9 		uxth	r9, r4
+ 875              	.LVL59:
+ 876              		.loc 4 209 9 is_stmt 1 view .LVU211
+ 877 0028 43D8     		bhi	.L54
+ 878              	.L59:
+ 879              		.loc 4 209 25 view .LVU212
+ 880              		.loc 4 209 27 is_stmt 0 view .LVU213
+ 881 002a 013D     		subs	r5, r5, #1
+ 882 002c ADB2     		uxth	r5, r5
+ 883              	.LVL60:
+ 884              	.L48:
+ 210:Frame.h       ****         return &m_pFrame[x+(y*m_Width)];
+ 885              		.loc 4 210 9 is_stmt 1 view .LVU214
+ 886              		.loc 4 210 30 is_stmt 0 view .LVU215
+ 887 002e 00FB05F5 		mul	r5, r0, r5
+ 888              	.LVL61:
+ 889              		.loc 4 210 30 view .LVU216
+ 890              	.LBE158:
+ 891              	.LBE156:
+ 892              	.LBB161:
+ 893              	.LBB162:
+ 208:Frame.h       ****         if(y>=m_Height) y = m_Height-1;
+ 894              		.loc 4 208 9 view .LVU217
+ 895 0032 8342     		cmp	r3, r0
+ 896              	.LBE162:
+ 897              	.LBE161:
+ 898              	.LBB166:
+ 899              	.LBB159:
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 30
+
+
+ 900              		.loc 4 210 27 view .LVU218
+ 901 0034 09EB050E 		add	lr, r9, r5
+ 902              		.loc 4 210 39 view .LVU219
+ 903 0038 0CEBCE0E 		add	lr, ip, lr, lsl #3
+ 904              	.LVL62:
+ 905              		.loc 4 210 39 view .LVU220
+ 906              	.LBE159:
+ 907              	.LBE166:
+ 213:Frame.cpp     ****         pEndLigne = pFrame->getPtr(dx, PosY);
+ 908              		.loc 1 213 9 is_stmt 1 view .LVU221
+ 909              	.LBB167:
+ 910              	.LBI161:
+ 207:Frame.h       ****         if(x>=m_Width) x = m_Width-1;
+ 911              		.loc 4 207 17 view .LVU222
+ 912              	.LBB163:
+ 208:Frame.h       ****         if(y>=m_Height) y = m_Height-1;
+ 913              		.loc 4 208 9 view .LVU223
+ 914 003c 34D3     		bcc	.L55
+ 208:Frame.h       ****         if(y>=m_Height) y = m_Height-1;
+ 915              		.loc 4 208 24 view .LVU224
+ 208:Frame.h       ****         if(y>=m_Height) y = m_Height-1;
+ 916              		.loc 4 208 26 is_stmt 0 view .LVU225
+ 917 003e 0138     		subs	r0, r0, #1
+ 918 0040 84B2     		uxth	r4, r0
+ 919              	.LVL63:
+ 920              	.L49:
+ 209:Frame.h       ****         return &m_pFrame[x+(y*m_Width)];
+ 921              		.loc 4 209 9 is_stmt 1 view .LVU226
+ 922              		.loc 4 210 9 view .LVU227
+ 923              		.loc 4 210 9 is_stmt 0 view .LVU228
+ 924              	.LBE163:
+ 925              	.LBE167:
+ 214:Frame.cpp     ****         while (pFrameCourant <= pEndLigne){
+ 926              		.loc 1 214 9 is_stmt 1 view .LVU229
+ 927              		.loc 1 214 30 view .LVU230
+ 928              	.LBB168:
+ 929              	.LBB164:
+ 930              		.loc 4 210 27 is_stmt 0 view .LVU231
+ 931 0042 2544     		add	r5, r5, r4
+ 932              	.LVL64:
+ 933              		.loc 4 210 39 view .LVU232
+ 934 0044 0CEBC505 		add	r5, ip, r5, lsl #3
+ 935              	.LBE164:
+ 936              	.LBE168:
+ 937              		.loc 1 214 30 view .LVU233
+ 938 0048 AE45     		cmp	lr, r5
+ 939 004a 27D8     		bhi	.L50
+ 940 004c A4EB0904 		sub	r4, r4, r9
+ 941              		.loc 1 214 30 view .LVU234
+ 942 0050 351D     		adds	r5, r6, #4
+ 943 0052 B01C     		adds	r0, r6, #2
+ 944 0054 0EF1080E 		add	lr, lr, #8
+ 945              	.LVL65:
+ 946              		.loc 1 214 30 view .LVU235
+ 947 0058 24F06044 		bic	r4, r4, #-536870912
+ 948 005c 05EB4405 		add	r5, r5, r4, lsl #1
+ 949              	.LVL66:
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 31
+
+
+ 950              	.L51:
+ 215:Frame.cpp     **** #if TFT_COLOR == 16
+ 216:Frame.cpp     ****                 *pBloc++ = (pFrameCourant->getB() & 0xF8) | (pFrameCourant->getG() >> 5 );
+ 951              		.loc 1 216 17 is_stmt 1 view .LVU236
+ 952              	.LBB169:
+ 953              	.LBI169:
+ 150:Frame.h       ****         return B;
+ 954              		.loc 4 150 20 view .LVU237
+ 955              	.LBB170:
+ 151:Frame.h       ****     }
+ 956              		.loc 4 151 9 view .LVU238
+ 151:Frame.h       ****     }
+ 957              		.loc 4 151 9 is_stmt 0 view .LVU239
+ 958              	.LBE170:
+ 959              	.LBE169:
+ 960              	.LBB171:
+ 961              	.LBI171:
+ 144:Frame.h       ****         return G;
+ 962              		.loc 4 144 20 is_stmt 1 view .LVU240
+ 963              	.LBB172:
+ 145:Frame.h       ****     }
+ 964              		.loc 4 145 9 view .LVU241
+ 145:Frame.h       ****     }
+ 965              		.loc 4 145 9 is_stmt 0 view .LVU242
+ 966              	.LBE172:
+ 967              	.LBE171:
+ 968              		.loc 1 216 51 view .LVU243
+ 969 0060 1EF806CC 		ldrb	ip, [lr, #-6]	@ zero_extendqisi2
+ 214:Frame.cpp     **** #if TFT_COLOR == 16
+ 970              		.loc 1 214 30 view .LVU244
+ 971 0064 0230     		adds	r0, r0, #2
+ 972              	.LVL67:
+ 973              		.loc 1 216 84 view .LVU245
+ 974 0066 1EF8079C 		ldrb	r9, [lr, #-7]	@ zero_extendqisi2
+ 214:Frame.cpp     **** #if TFT_COLOR == 16
+ 975              		.loc 1 214 30 view .LVU246
+ 976 006a 0EF1080E 		add	lr, lr, #8
+ 977              	.LVL68:
+ 978              		.loc 1 216 51 view .LVU247
+ 979 006e 2CF0070C 		bic	ip, ip, #7
+ 214:Frame.cpp     **** #if TFT_COLOR == 16
+ 980              		.loc 1 214 30 view .LVU248
+ 981 0072 8542     		cmp	r5, r0
+ 982              		.loc 1 216 59 view .LVU249
+ 983 0074 4CEA591C 		orr	ip, ip, r9, lsr #5
+ 984              		.loc 1 216 26 view .LVU250
+ 985 0078 00F804CC 		strb	ip, [r0, #-4]
+ 217:Frame.cpp     ****                 *pBloc++ = (pFrameCourant->getR() >> 3) | ((pFrameCourant->getG() << 3 )  & 0xE0);
+ 986              		.loc 1 217 17 is_stmt 1 view .LVU251
+ 987              	.LVL69:
+ 988              	.LBB173:
+ 989              	.LBI173:
+ 139:Frame.h       ****         return R;
+ 990              		.loc 4 139 20 view .LVU252
+ 991              	.LBB174:
+ 140:Frame.h       ****     }
+ 992              		.loc 4 140 9 view .LVU253
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 32
+
+
+ 140:Frame.h       ****     }
+ 993              		.loc 4 140 9 is_stmt 0 view .LVU254
+ 994              	.LBE174:
+ 995              	.LBE173:
+ 996              	.LBB175:
+ 997              	.LBI175:
+ 144:Frame.h       ****         return G;
+ 998              		.loc 4 144 20 is_stmt 1 view .LVU255
+ 999              	.LBB176:
+ 145:Frame.h       ****     }
+ 1000              		.loc 4 145 9 view .LVU256
+ 145:Frame.h       ****     }
+ 1001              		.loc 4 145 9 is_stmt 0 view .LVU257
+ 1002              	.LBE176:
+ 1003              	.LBE175:
+ 1004              		.loc 1 217 80 view .LVU258
+ 1005 007c 1EF80FCC 		ldrb	ip, [lr, #-15]	@ zero_extendqisi2
+ 1006              		.loc 1 217 51 view .LVU259
+ 1007 0080 1EF8109C 		ldrb	r9, [lr, #-16]	@ zero_extendqisi2
+ 1008              		.loc 1 217 83 view .LVU260
+ 1009 0084 4FEACC0C 		lsl	ip, ip, #3
+ 1010              		.loc 1 217 91 view .LVU261
+ 1011 0088 2CF01F0C 		bic	ip, ip, #31
+ 1012              		.loc 1 217 57 view .LVU262
+ 1013 008c 4CEAD90C 		orr	ip, ip, r9, lsr #3
+ 1014              		.loc 1 217 26 view .LVU263
+ 1015 0090 00F803CC 		strb	ip, [r0, #-3]
+ 218:Frame.cpp     **** #else
+ 219:Frame.cpp     ****                 *pBloc++ = pFrameCourant->getB();
+ 220:Frame.cpp     ****                 *pBloc++ = pFrameCourant->getG();
+ 221:Frame.cpp     ****                 *pBloc++ = pFrameCourant->getR();
+ 222:Frame.cpp     **** #endif
+ 223:Frame.cpp     ****             pFrameCourant++;
+ 1016              		.loc 1 223 13 is_stmt 1 view .LVU264
+ 1017              	.LVL70:
+ 214:Frame.cpp     **** #if TFT_COLOR == 16
+ 1018              		.loc 1 214 9 view .LVU265
+ 214:Frame.cpp     **** #if TFT_COLOR == 16
+ 1019              		.loc 1 214 30 view .LVU266
+ 1020 0094 E4D1     		bne	.L51
+ 217:Frame.cpp     **** #else
+ 1021              		.loc 1 217 23 is_stmt 0 view .LVU267
+ 1022 0096 0134     		adds	r4, r4, #1
+ 1023 0098 06EB4406 		add	r6, r6, r4, lsl #1
+ 1024              	.L50:
+ 211:Frame.cpp     ****         pFrameCourant = pFrame->getPtr(x, PosY);
+ 1025              		.loc 1 211 5 is_stmt 1 discriminator 2 view .LVU268
+ 1026 009c 0132     		adds	r2, r2, #1
+ 1027              	.LVL71:
+ 211:Frame.cpp     ****         pFrameCourant = pFrame->getPtr(x, PosY);
+ 1028              		.loc 1 211 5 is_stmt 0 discriminator 2 view .LVU269
+ 1029 009e 92B2     		uxth	r2, r2
+ 1030              	.LVL72:
+ 211:Frame.cpp     ****         pFrameCourant = pFrame->getPtr(x, PosY);
+ 1031              		.loc 1 211 34 is_stmt 1 discriminator 2 view .LVU270
+ 1032 00a0 9045     		cmp	r8, r2
+ 1033 00a2 B5D2     		bcs	.L52
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 33
+
+
+ 1034              	.LVL73:
+ 1035              	.L45:
+ 211:Frame.cpp     ****         pFrameCourant = pFrame->getPtr(x, PosY);
+ 1036              		.loc 1 211 34 is_stmt 0 discriminator 2 view .LVU271
+ 1037              	.LBE179:
+ 224:Frame.cpp     ****         }
+ 225:Frame.cpp     ****     }
+ 226:Frame.cpp     **** }
+ 1038              		.loc 1 226 1 view .LVU272
+ 1039 00a4 BDE8F083 		pop	{r4, r5, r6, r7, r8, r9, pc}
+ 1040              	.LVL74:
+ 1041              	.L55:
+ 1042              	.LBB180:
+ 1043              	.LBB177:
+ 1044              	.LBB165:
+ 1045              		.loc 1 226 1 view .LVU273
+ 1046 00a8 1C46     		mov	r4, r3
+ 1047 00aa CAE7     		b	.L49
+ 1048              	.LVL75:
+ 1049              	.L53:
+ 1050              		.loc 1 226 1 view .LVU274
+ 1051              	.LBE165:
+ 1052              	.LBE177:
+ 1053              	.LBB178:
+ 1054              	.LBB160:
+ 209:Frame.h       ****         return &m_pFrame[x+(y*m_Width)];
+ 1055              		.loc 4 209 9 view .LVU275
+ 1056 00ac 9542     		cmp	r5, r2
+ 1057 00ae 8946     		mov	r9, r1
+ 1058              	.LVL76:
+ 209:Frame.h       ****         return &m_pFrame[x+(y*m_Width)];
+ 1059              		.loc 4 209 9 is_stmt 1 view .LVU276
+ 1060 00b0 BBD9     		bls	.L59
+ 1061              	.L54:
+ 209:Frame.h       ****         return &m_pFrame[x+(y*m_Width)];
+ 1062              		.loc 4 209 9 is_stmt 0 view .LVU277
+ 1063 00b2 1546     		mov	r5, r2
+ 1064 00b4 BBE7     		b	.L48
+ 1065              	.LBE160:
+ 1066              	.LBE178:
+ 1067              	.LBE180:
+ 1068              		.cfi_endproc
+ 1069              	.LFE2618:
+ 1071 00b6 00BF     		.section	.text._ZN10cRBG_Frame7AddBlocEtt.part.0,"ax",%progbits
+ 1072              		.align	1
+ 1073              		.p2align 2,,3
+ 1074              		.syntax unified
+ 1075              		.thumb
+ 1076              		.thumb_func
+ 1077              		.fpu fpv5-d16
+ 1079              	_ZN10cRBG_Frame7AddBlocEtt.part.0:
+ 1080              	.LVL77:
+ 1081              	.LFB2638:
+ 119:Frame.cpp     ****     __disable_irq();
+ 1082              		.loc 1 119 7 is_stmt 1 view -0
+ 1083              		.cfi_startproc
+ 1084              		@ args = 0, pretend = 0, frame = 0
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 34
+
+
+ 1085              		@ frame_needed = 0, uses_anonymous_args = 0
+ 125:Frame.cpp     ****     uint16_t dx = x + m_BlocWidth-1;
+ 1086              		.loc 1 125 5 view .LVU279
+ 1087              	.LBB181:
+ 1088              	.LBI181:
+  83:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** {
+ 1089              		.loc 3 83 53 view .LVU280
+ 1090              	.LBB182:
+  85:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** }
+ 1091              		.loc 3 85 3 view .LVU281
+ 1092              	.LBE182:
+ 1093              	.LBE181:
+ 119:Frame.cpp     ****     __disable_irq();
+ 1094              		.loc 1 119 7 is_stmt 0 view .LVU282
+ 1095 0000 F0B5     		push	{r4, r5, r6, r7, lr}
+ 1096              		.cfi_def_cfa_offset 20
+ 1097              		.cfi_offset 4, -20
+ 1098              		.cfi_offset 5, -16
+ 1099              		.cfi_offset 6, -12
+ 1100              		.cfi_offset 7, -8
+ 1101              		.cfi_offset 14, -4
+ 1102 0002 0446     		mov	r4, r0
+ 1103 0004 83B0     		sub	sp, sp, #12
+ 1104              		.cfi_def_cfa_offset 32
+ 1105              	.LBB184:
+ 1106              	.LBB183:
+  85:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** }
+ 1107              		.loc 3 85 3 view .LVU283
+ 1108              		.syntax unified
+ 1109              	@ 85 "../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h" 1
+ 1110 0006 62B6     		cpsie i
+ 1111              	@ 0 "" 2
+ 1112              		.thumb
+ 1113              		.syntax unified
+ 1114              	.LBE183:
+ 1115              	.LBE184:
+ 126:Frame.cpp     ****     uint16_t dy = y + m_BlocHeight-1;
+ 1116              		.loc 1 126 5 is_stmt 1 view .LVU284
+ 126:Frame.cpp     ****     uint16_t dy = y + m_BlocHeight-1;
+ 1117              		.loc 1 126 14 is_stmt 0 view .LVU285
+ 1118 0008 B0F86430 		ldrh	r3, [r0, #100]
+ 1119 000c 01F1FF3E 		add	lr, r1, #-1
+ 129:Frame.cpp     ****     m_pFIFO->m_CmdRASET[m_FIFO_in].setData(y, dy);
+ 1120              		.loc 1 129 25 view .LVU286
+ 1121 0010 B0F8D0C0 		ldrh	ip, [r0, #208]
+ 1122              	.LBB185:
+ 1123              	.LBB186:
+  35:Frame.h       ****         m_Data[1] = x & 0xFF;
+ 1124              		.loc 4 35 23 view .LVU287
+ 1125 0014 0F0A     		lsrs	r7, r1, #8
+ 1126              	.LBE186:
+ 1127              	.LBE185:
+ 126:Frame.cpp     ****     uint16_t dy = y + m_BlocHeight-1;
+ 1128              		.loc 1 126 14 view .LVU288
+ 1129 0016 9E44     		add	lr, lr, r3
+ 129:Frame.cpp     ****     m_pFIFO->m_CmdRASET[m_FIFO_in].setData(y, dy);
+ 1130              		.loc 1 129 5 view .LVU289
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 35
+
+
+ 1131 0018 D0F8CC30 		ldr	r3, [r0, #204]
+ 1132              	.LBB192:
+ 1133              	.LBB187:
+  35:Frame.h       ****         m_Data[1] = x & 0xFF;
+ 1134              		.loc 4 35 19 view .LVU290
+ 1135 001c 0CEB8C0C 		add	ip, ip, ip, lsl #2
+ 1136              	.LBE187:
+ 1137              	.LBE192:
+ 127:Frame.cpp     **** 
+ 1138              		.loc 1 127 14 view .LVU291
+ 1139 0020 B0F86660 		ldrh	r6, [r0, #102]
+ 1140              	.LBB193:
+ 1141              	.LBB188:
+  35:Frame.h       ****         m_Data[1] = x & 0xFF;
+ 1142              		.loc 4 35 19 view .LVU292
+ 1143 0024 9C44     		add	ip, ip, r3
+ 1144              	.LBE188:
+ 1145              	.LBE193:
+ 126:Frame.cpp     ****     uint16_t dy = y + m_BlocHeight-1;
+ 1146              		.loc 1 126 14 view .LVU293
+ 1147 0026 1FFA8EF3 		uxth	r3, lr
+ 1148              	.LVL78:
+ 127:Frame.cpp     **** 
+ 1149              		.loc 1 127 5 is_stmt 1 view .LVU294
+ 1150              	.LBB194:
+ 1151              	.LBB189:
+  37:Frame.h       ****         m_Data[3] = dx & 0xFF;
+ 1152              		.loc 4 37 24 is_stmt 0 view .LVU295
+ 1153 002a CEF3072E 		ubfx	lr, lr, #8, #8
+  36:Frame.h       ****         m_Data[2] = dx >> 8;
+ 1154              		.loc 4 36 19 view .LVU296
+ 1155 002e 8CF80210 		strb	r1, [ip, #2]
+  35:Frame.h       ****         m_Data[1] = x & 0xFF;
+ 1156              		.loc 4 35 19 view .LVU297
+ 1157 0032 8CF80170 		strb	r7, [ip, #1]
+  37:Frame.h       ****         m_Data[3] = dx & 0xFF;
+ 1158              		.loc 4 37 19 view .LVU298
+ 1159 0036 8CF803E0 		strb	lr, [ip, #3]
+ 1160              	.LBE189:
+ 1161              	.LBE194:
+ 127:Frame.cpp     **** 
+ 1162              		.loc 1 127 14 view .LVU299
+ 1163 003a 02F1FF3E 		add	lr, r2, #-1
+ 1164              	.LBB195:
+ 1165              	.LBB190:
+  38:Frame.h       ****     }
+ 1166              		.loc 4 38 19 view .LVU300
+ 1167 003e 8CF80430 		strb	r3, [ip, #4]
+ 1168              	.LBE190:
+ 1169              	.LBE195:
+ 130:Frame.cpp     ****     m_pFIFO->m_CmdRAWWR[m_FIFO_in].setData(x, y, dx, dy, this);
+ 1170              		.loc 1 130 25 view .LVU301
+ 1171 0042 B0F8D0C0 		ldrh	ip, [r0, #208]
+ 127:Frame.cpp     **** 
+ 1172              		.loc 1 127 14 view .LVU302
+ 1173 0046 B644     		add	lr, lr, r6
+ 1174              	.LBB196:
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 36
+
+
+ 1175              	.LBB197:
+  65:Frame.h       ****         m_Data[1] = y & 0xFF;
+ 1176              		.loc 4 65 19 view .LVU303
+ 1177 0048 D0F8CC50 		ldr	r5, [r0, #204]
+  65:Frame.h       ****         m_Data[1] = y & 0xFF;
+ 1178              		.loc 4 65 23 view .LVU304
+ 1179 004c 100A     		lsrs	r0, r2, #8
+ 1180              	.LVL79:
+  65:Frame.h       ****         m_Data[1] = y & 0xFF;
+ 1181              		.loc 4 65 19 view .LVU305
+ 1182 004e 0CEB8C0C 		add	ip, ip, ip, lsl #2
+ 1183 0052 AC44     		add	ip, ip, r5
+ 1184 0054 8CF83300 		strb	r0, [ip, #51]
+ 1185              	.LBE197:
+ 1186              	.LBE196:
+ 127:Frame.cpp     **** 
+ 1187              		.loc 1 127 14 view .LVU306
+ 1188 0058 1FFA8EF0 		uxth	r0, lr
+ 1189              	.LBB200:
+ 1190              	.LBB198:
+  67:Frame.h       ****         m_Data[3] = dy & 0xFF;
+ 1191              		.loc 4 67 24 view .LVU307
+ 1192 005c CEF3072E 		ubfx	lr, lr, #8, #8
+  66:Frame.h       ****         m_Data[2] = dy >> 8;
+ 1193              		.loc 4 66 19 view .LVU308
+ 1194 0060 8CF83420 		strb	r2, [ip, #52]
+ 1195              	.LVL80:
+  66:Frame.h       ****         m_Data[2] = dy >> 8;
+ 1196              		.loc 4 66 19 view .LVU309
+ 1197              	.LBE198:
+ 1198              	.LBE200:
+ 129:Frame.cpp     ****     m_pFIFO->m_CmdRASET[m_FIFO_in].setData(y, dy);
+ 1199              		.loc 1 129 5 is_stmt 1 view .LVU310
+ 1200              	.LBB201:
+ 1201              	.LBI185:
+  34:Frame.h       ****         m_Data[0] = x >> 8;
+ 1202              		.loc 4 34 10 view .LVU311
+ 1203              	.LBB191:
+  35:Frame.h       ****         m_Data[1] = x & 0xFF;
+ 1204              		.loc 4 35 9 view .LVU312
+  36:Frame.h       ****         m_Data[2] = dx >> 8;
+ 1205              		.loc 4 36 9 view .LVU313
+  37:Frame.h       ****         m_Data[3] = dx & 0xFF;
+ 1206              		.loc 4 37 9 view .LVU314
+  38:Frame.h       ****     }
+ 1207              		.loc 4 38 9 view .LVU315
+  38:Frame.h       ****     }
+ 1208              		.loc 4 38 9 is_stmt 0 view .LVU316
+ 1209              	.LBE191:
+ 1210              	.LBE201:
+ 130:Frame.cpp     ****     m_pFIFO->m_CmdRAWWR[m_FIFO_in].setData(x, y, dx, dy, this);
+ 1211              		.loc 1 130 5 is_stmt 1 view .LVU317
+ 1212              	.LBB202:
+ 1213              	.LBI196:
+  64:Frame.h       ****         m_Data[0] = y >> 8;
+ 1214              		.loc 4 64 10 view .LVU318
+ 1215              	.LBB199:
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 37
+
+
+  65:Frame.h       ****         m_Data[1] = y & 0xFF;
+ 1216              		.loc 4 65 9 view .LVU319
+  66:Frame.h       ****         m_Data[2] = dy >> 8;
+ 1217              		.loc 4 66 9 view .LVU320
+  67:Frame.h       ****         m_Data[3] = dy & 0xFF;
+ 1218              		.loc 4 67 9 view .LVU321
+  68:Frame.h       ****     }
+ 1219              		.loc 4 68 19 is_stmt 0 view .LVU322
+ 1220 0064 8CF83600 		strb	r0, [ip, #54]
+  67:Frame.h       ****         m_Data[3] = dy & 0xFF;
+ 1221              		.loc 4 67 19 view .LVU323
+ 1222 0068 8CF835E0 		strb	lr, [ip, #53]
+  68:Frame.h       ****     }
+ 1223              		.loc 4 68 9 is_stmt 1 view .LVU324
+ 1224              	.LVL81:
+  68:Frame.h       ****     }
+ 1225              		.loc 4 68 9 is_stmt 0 view .LVU325
+ 1226              	.LBE199:
+ 1227              	.LBE202:
+ 131:Frame.cpp     ****     m_FIFO_in +=1;
+ 1228              		.loc 1 131 5 is_stmt 1 view .LVU326
+ 131:Frame.cpp     ****     m_FIFO_in +=1;
+ 1229              		.loc 1 131 43 is_stmt 0 view .LVU327
+ 1230 006c CDE90004 		strd	r0, r4, [sp]
+ 1231 0070 B4F8D0C0 		ldrh	ip, [r4, #208]
+ 1232 0074 D4F8CC00 		ldr	r0, [r4, #204]
+ 1233              	.LVL82:
+ 131:Frame.cpp     ****     m_FIFO_in +=1;
+ 1234              		.loc 1 131 43 view .LVU328
+ 1235 0078 0CEB4C05 		add	r5, ip, ip, lsl #1
+ 1236 007c 0CEB452C 		add	ip, ip, r5, lsl #9
+ 1237 0080 0CF1640C 		add	ip, ip, #100
+ 1238 0084 6044     		add	r0, r0, ip
+ 1239 0086 FFF7FEFF 		bl	_ZN9Cmd_RAMWR7setDataEttttP10cRBG_Frame
+ 1240              	.LVL83:
+ 132:Frame.cpp     ****     if(m_FIFO_in >= SIZE_FIFO){
+ 1241              		.loc 1 132 5 is_stmt 1 view .LVU329
+ 132:Frame.cpp     ****     if(m_FIFO_in >= SIZE_FIFO){
+ 1242              		.loc 1 132 15 is_stmt 0 view .LVU330
+ 1243 008a B4F8D030 		ldrh	r3, [r4, #208]
+ 1244              	.LVL84:
+ 138:Frame.cpp     **** 
+ 1245              		.loc 1 138 1 view .LVU331
+ 1246 008e 0120     		movs	r0, #1
+ 132:Frame.cpp     ****     if(m_FIFO_in >= SIZE_FIFO){
+ 1247              		.loc 1 132 15 view .LVU332
+ 1248 0090 0133     		adds	r3, r3, #1
+ 1249 0092 9BB2     		uxth	r3, r3
+ 133:Frame.cpp     ****         m_FIFO_in = 0;
+ 1250              		.loc 1 133 5 is_stmt 1 view .LVU333
+ 1251 0094 092B     		cmp	r3, #9
+ 134:Frame.cpp     ****     }
+ 1252              		.loc 1 134 9 view .LVU334
+ 134:Frame.cpp     ****     }
+ 1253              		.loc 1 134 19 is_stmt 0 view .LVU335
+ 1254 0096 88BF     		it	hi
+ 1255 0098 0023     		movhi	r3, #0
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 38
+
+
+ 1256 009a A4F8D030 		strh	r3, [r4, #208]	@ movhi
+ 136:Frame.cpp     ****     return true;
+ 1257              		.loc 1 136 5 is_stmt 1 view .LVU336
+ 136:Frame.cpp     ****     return true;
+ 1258              		.loc 1 136 22 is_stmt 0 view .LVU337
+ 1259 009e B4F8D430 		ldrh	r3, [r4, #212]
+ 1260 00a2 0344     		add	r3, r3, r0
+ 1261 00a4 A4F8D430 		strh	r3, [r4, #212]	@ movhi
+ 137:Frame.cpp     **** }
+ 1262              		.loc 1 137 5 is_stmt 1 view .LVU338
+ 138:Frame.cpp     **** 
+ 1263              		.loc 1 138 1 is_stmt 0 view .LVU339
+ 1264 00a8 03B0     		add	sp, sp, #12
+ 1265              		.cfi_def_cfa_offset 20
+ 1266              		@ sp needed
+ 1267 00aa F0BD     		pop	{r4, r5, r6, r7, pc}
+ 138:Frame.cpp     **** 
+ 1268              		.loc 1 138 1 view .LVU340
+ 1269              		.cfi_endproc
+ 1270              	.LFE2638:
+ 1272              		.section	.text._ZN10cRBG_Frame7AddBlocEtt,"ax",%progbits
+ 1273              		.align	1
+ 1274              		.p2align 2,,3
+ 1275              		.global	_ZN10cRBG_Frame7AddBlocEtt
+ 1276              		.syntax unified
+ 1277              		.thumb
+ 1278              		.thumb_func
+ 1279              		.fpu fpv5-d16
+ 1281              	_ZN10cRBG_Frame7AddBlocEtt:
+ 1282              	.LVL85:
+ 1283              	.LFB2610:
+ 119:Frame.cpp     ****     __disable_irq();
+ 1284              		.loc 1 119 51 is_stmt 1 view -0
+ 1285              		.cfi_startproc
+ 1286              		@ args = 0, pretend = 0, frame = 0
+ 1287              		@ frame_needed = 0, uses_anonymous_args = 0
+ 1288              		@ link register save eliminated.
+ 120:Frame.cpp     ****     if(m_FIFO_NbElements >= SIZE_FIFO){
+ 1289              		.loc 1 120 5 view .LVU342
+ 1290              	.LBB207:
+ 1291              	.LBI207:
+  94:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** {
+ 1292              		.loc 3 94 53 view .LVU343
+ 1293              	.LBB208:
+ 1294              		.loc 3 96 3 view .LVU344
+ 1295              		.syntax unified
+ 1296              	@ 96 "../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h" 1
+ 1297 0000 72B6     		cpsid i
+ 1298              	@ 0 "" 2
+ 1299              		.thumb
+ 1300              		.syntax unified
+ 1301              	.LBE208:
+ 1302              	.LBE207:
+ 121:Frame.cpp     ****         __enable_irq();
+ 1303              		.loc 1 121 5 view .LVU345
+ 1304 0002 B0F8D430 		ldrh	r3, [r0, #212]
+ 1305 0006 092B     		cmp	r3, #9
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 39
+
+
+ 1306 0008 02D9     		bls	.L70
+ 122:Frame.cpp     ****         return false;
+ 1307              		.loc 1 122 9 view .LVU346
+ 1308              	.LBB209:
+ 1309              	.LBI209:
+  83:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** {
+ 1310              		.loc 3 83 53 view .LVU347
+ 1311              	.LBB210:
+  85:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** }
+ 1312              		.loc 3 85 3 view .LVU348
+ 1313              		.syntax unified
+ 1314              	@ 85 "../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h" 1
+ 1315 000a 62B6     		cpsie i
+ 1316              	@ 0 "" 2
+ 1317              		.thumb
+ 1318              		.syntax unified
+ 1319              	.LBE210:
+ 1320              	.LBE209:
+ 123:Frame.cpp     ****     }
+ 1321              		.loc 1 123 9 view .LVU349
+ 138:Frame.cpp     **** 
+ 1322              		.loc 1 138 1 is_stmt 0 view .LVU350
+ 1323 000c 0020     		movs	r0, #0
+ 1324              	.LVL86:
+ 138:Frame.cpp     **** 
+ 1325              		.loc 1 138 1 view .LVU351
+ 1326 000e 7047     		bx	lr
+ 1327              	.LVL87:
+ 1328              	.L70:
+ 138:Frame.cpp     **** 
+ 1329              		.loc 1 138 1 view .LVU352
+ 1330 0010 FFF7FEBF 		b	_ZN10cRBG_Frame7AddBlocEtt.part.0
+ 1331              	.LVL88:
+ 138:Frame.cpp     **** 
+ 1332              		.loc 1 138 1 view .LVU353
+ 1333              		.cfi_endproc
+ 1334              	.LFE2610:
+ 1336              		.section	.text._ZN10cRBG_Frame10FlushFrameEv,"ax",%progbits
+ 1337              		.align	1
+ 1338              		.p2align 2,,3
+ 1339              		.global	_ZN10cRBG_Frame10FlushFrameEv
+ 1340              		.syntax unified
+ 1341              		.thumb
+ 1342              		.thumb_func
+ 1343              		.fpu fpv5-d16
+ 1345              	_ZN10cRBG_Frame10FlushFrameEv:
+ 1346              	.LVL89:
+ 1347              	.LFB2609:
+ 100:Frame.cpp     ****     uint16_t x;
+ 1348              		.loc 1 100 30 is_stmt 1 view -0
+ 1349              		.cfi_startproc
+ 1350              		@ args = 0, pretend = 0, frame = 0
+ 1351              		@ frame_needed = 0, uses_anonymous_args = 0
+ 101:Frame.cpp     ****     uint16_t y;
+ 1352              		.loc 1 101 5 view .LVU355
+ 102:Frame.cpp     ****     
+ 1353              		.loc 1 102 5 view .LVU356
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 40
+
+
+ 104:Frame.cpp     ****         if(getBlocChange(Bloc) == true){
+ 1354              		.loc 1 104 5 view .LVU357
+ 1355              	.LBB238:
+ 104:Frame.cpp     ****         if(getBlocChange(Bloc) == true){
+ 1356              		.loc 1 104 33 view .LVU358
+ 1357              	.LBE238:
+ 100:Frame.cpp     ****     uint16_t x;
+ 1358              		.loc 1 100 30 is_stmt 0 view .LVU359
+ 1359 0000 2DE9F043 		push	{r4, r5, r6, r7, r8, r9, lr}
+ 1360              		.cfi_def_cfa_offset 28
+ 1361              		.cfi_offset 4, -28
+ 1362              		.cfi_offset 5, -24
+ 1363              		.cfi_offset 6, -20
+ 1364              		.cfi_offset 7, -16
+ 1365              		.cfi_offset 8, -12
+ 1366              		.cfi_offset 9, -8
+ 1367              		.cfi_offset 14, -4
+ 1368              	.LBB285:
+ 104:Frame.cpp     ****         if(getBlocChange(Bloc) == true){
+ 1369              		.loc 1 104 18 view .LVU360
+ 1370 0004 0025     		movs	r5, #0
+ 1371              	.LBE285:
+ 100:Frame.cpp     ****     uint16_t x;
+ 1372              		.loc 1 100 30 view .LVU361
+ 1373 0006 83B0     		sub	sp, sp, #12
+ 1374              		.cfi_def_cfa_offset 40
+ 100:Frame.cpp     ****     uint16_t x;
+ 1375              		.loc 1 100 30 view .LVU362
+ 1376 0008 0446     		mov	r4, r0
+ 1377 000a 00F16708 		add	r8, r0, #103
+ 1378 000e 03E0     		b	.L79
+ 1379              	.LVL90:
+ 1380              	.L72:
+ 1381              	.LBB286:
+ 104:Frame.cpp     ****         if(getBlocChange(Bloc) == true){
+ 1382              		.loc 1 104 5 is_stmt 1 discriminator 2 view .LVU363
+ 1383 0010 0135     		adds	r5, r5, #1
+ 1384              	.LVL91:
+ 104:Frame.cpp     ****         if(getBlocChange(Bloc) == true){
+ 1385              		.loc 1 104 5 is_stmt 0 discriminator 2 view .LVU364
+ 1386 0012 ADB2     		uxth	r5, r5
+ 1387              	.LVL92:
+ 104:Frame.cpp     ****         if(getBlocChange(Bloc) == true){
+ 1388              		.loc 1 104 33 is_stmt 1 discriminator 2 view .LVU365
+ 1389 0014 642D     		cmp	r5, #100
+ 1390 0016 4FD0     		beq	.L88
+ 1391              	.LVL93:
+ 1392              	.L79:
+ 105:Frame.cpp     ****             resetBlocChange(Bloc);
+ 1393              		.loc 1 105 9 view .LVU366
+ 1394              	.LBB239:
+ 1395              	.LBI239:
+ 211:Frame.h       ****     } 
+ 212:Frame.h       **** 
+ 213:Frame.h       ****     // --------------------------------------------------------------------------
+ 214:Frame.h       ****     // Ecriture d'un pixel 
+ 215:Frame.h       ****     inline void setPixel(uint16_t x, uint16_t y, cColor Color){
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 41
+
+
+ 216:Frame.h       ****         if((x<m_Width) && (y<m_Height)){
+ 217:Frame.h       ****             m_pFrame[x+(y*m_Width)].set(Color);
+ 218:Frame.h       ****         }
+ 219:Frame.h       ****     }
+ 220:Frame.h       ****     
+ 221:Frame.h       ****     // ==========================================================================
+ 222:Frame.h       ****     // Hauteur / Largeur
+ 223:Frame.h       ****     // --------------------------------------------------------------------------
+ 224:Frame.h       ****     // Lecture de la largeur de la frame
+ 225:Frame.h       ****     inline uint16_t getWidth() {
+ 226:Frame.h       ****         return m_Width ;
+ 227:Frame.h       ****     }
+ 228:Frame.h       **** 
+ 229:Frame.h       ****     // --------------------------------------------------------------------------
+ 230:Frame.h       ****     // Lecture de la hauteur de la frame
+ 231:Frame.h       ****     inline uint16_t getHeight() {
+ 232:Frame.h       ****         return m_Height ;
+ 233:Frame.h       ****     }
+ 234:Frame.h       **** 
+ 235:Frame.h       ****     // --------------------------------------------------------------------------
+ 236:Frame.h       ****     // Transmission des modifications de la frame vers l'écran    
+ 237:Frame.h       ****     void FlushFrame();
+ 238:Frame.h       ****     
+ 239:Frame.h       ****     // ==========================================================================
+ 240:Frame.h       ****     // Gestion des blocs de transmission
+ 241:Frame.h       **** 
+ 242:Frame.h       ****     
+ 243:Frame.h       ****     protected:    
+ 244:Frame.h       ****     // --------------------------------------------------------------------------
+ 245:Frame.h       ****     // Test si le FIFO est plein
+ 246:Frame.h       ****     inline bool isFull(){
+ 247:Frame.h       ****         // protéger m_FIFO_NbElements ?
+ 248:Frame.h       ****         if(m_FIFO_NbElements >= SIZE_FIFO){
+ 249:Frame.h       ****             return false;
+ 250:Frame.h       ****         }
+ 251:Frame.h       ****         return true;
+ 252:Frame.h       ****     }
+ 253:Frame.h       **** 
+ 254:Frame.h       ****     // --------------------------------------------------------------------------
+ 255:Frame.h       ****     // Test si une transmission est en cours
+ 256:Frame.h       ****     inline bool isBusy(){
+ 257:Frame.h       ****         return m_Busy;
+ 258:Frame.h       ****     }
+ 259:Frame.h       **** 
+ 260:Frame.h       ****     // --------------------------------------------------------------------------
+ 261:Frame.h       ****     // Lecture de la largeur d'un bloc
+ 262:Frame.h       ****     inline uint16_t getBlocWidth() {
+ 263:Frame.h       ****         return m_BlocWidth ;
+ 264:Frame.h       ****     }
+ 265:Frame.h       **** 
+ 266:Frame.h       ****     // --------------------------------------------------------------------------
+ 267:Frame.h       ****     // Lecture de la hauteur de la frame
+ 268:Frame.h       ****     inline uint16_t getBlocHeight() {
+ 269:Frame.h       ****         return m_BlocHeight ;
+ 270:Frame.h       ****     }
+ 271:Frame.h       **** 
+ 272:Frame.h       ****     // --------------------------------------------------------------------------
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 42
+
+
+ 273:Frame.h       ****     // Test si un pixel du bloc a changé d'état
+ 274:Frame.h       ****     inline bool getBlocChange(uint8_t Bloc){
+ 1396              		.loc 4 274 17 view .LVU367
+ 1397              	.LBB240:
+ 275:Frame.h       ****         return m_BlocChange[Bloc];
+ 1398              		.loc 4 275 9 view .LVU368
+ 1399              		.loc 4 275 9 is_stmt 0 view .LVU369
+ 1400              	.LBE240:
+ 1401              	.LBE239:
+ 105:Frame.cpp     ****             resetBlocChange(Bloc);
+ 1402              		.loc 1 105 9 view .LVU370
+ 1403 0018 18F8013F 		ldrb	r3, [r8, #1]!	@ zero_extendqisi2
+ 1404 001c 002B     		cmp	r3, #0
+ 1405 001e F7D0     		beq	.L72
+ 106:Frame.cpp     ****             x= (Bloc % FRAME_GRILLE) * m_BlocWidth;
+ 1406              		.loc 1 106 13 is_stmt 1 view .LVU371
+ 1407              	.LVL94:
+ 1408              	.LBB241:
+ 1409              	.LBI241:
+ 276:Frame.h       ****     }
+ 277:Frame.h       **** 
+ 278:Frame.h       ****     // --------------------------------------------------------------------------
+ 279:Frame.h       ****     // Remise à zéro de l'indicateur de changement d'état
+ 280:Frame.h       ****     inline void resetBlocChange(uint8_t Bloc){
+ 1410              		.loc 4 280 17 view .LVU372
+ 1411              	.LBB242:
+ 281:Frame.h       ****         m_BlocChange[Bloc] = false;
+ 1412              		.loc 4 281 9 view .LVU373
+ 1413              	.LBE242:
+ 1414              	.LBE241:
+ 107:Frame.cpp     ****             y= (Bloc / FRAME_GRILLE) * m_BlocHeight;
+ 1415              		.loc 1 107 22 is_stmt 0 view .LVU374
+ 1416 0020 284B     		ldr	r3, .L90
+ 1417              	.LBB245:
+ 1418              	.LBB243:
+ 1419              		.loc 4 281 28 view .LVU375
+ 1420 0022 0022     		movs	r2, #0
+ 1421              	.LBE243:
+ 1422              	.LBE245:
+ 107:Frame.cpp     ****             y= (Bloc / FRAME_GRILLE) * m_BlocHeight;
+ 1423              		.loc 1 107 14 view .LVU376
+ 1424 0024 B4F86460 		ldrh	r6, [r4, #100]
+ 107:Frame.cpp     ****             y= (Bloc / FRAME_GRILLE) * m_BlocHeight;
+ 1425              		.loc 1 107 22 view .LVU377
+ 1426 0028 A3FB0513 		umull	r1, r3, r3, r5
+ 108:Frame.cpp     ****         
+ 1427              		.loc 1 108 14 view .LVU378
+ 1428 002c B4F86670 		ldrh	r7, [r4, #102]
+ 1429              	.LBB246:
+ 1430              	.LBB244:
+ 1431              		.loc 4 281 28 view .LVU379
+ 1432 0030 88F80020 		strb	r2, [r8]
+ 1433              	.LVL95:
+ 1434              		.loc 4 281 28 view .LVU380
+ 1435              	.LBE244:
+ 1436              	.LBE246:
+ 107:Frame.cpp     ****             y= (Bloc / FRAME_GRILLE) * m_BlocHeight;
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 43
+
+
+ 1437              		.loc 1 107 13 is_stmt 1 view .LVU381
+ 107:Frame.cpp     ****             y= (Bloc / FRAME_GRILLE) * m_BlocHeight;
+ 1438              		.loc 1 107 22 is_stmt 0 view .LVU382
+ 1439 0034 DB08     		lsrs	r3, r3, #3
+ 108:Frame.cpp     ****         
+ 1440              		.loc 1 108 14 view .LVU383
+ 1441 0036 17FB03F7 		smulbb	r7, r7, r3
+ 107:Frame.cpp     ****             y= (Bloc / FRAME_GRILLE) * m_BlocHeight;
+ 1442              		.loc 1 107 22 view .LVU384
+ 1443 003a 03EB8302 		add	r2, r3, r3, lsl #2
+ 1444 003e A5EB4202 		sub	r2, r5, r2, lsl #1
+ 108:Frame.cpp     ****         
+ 1445              		.loc 1 108 14 view .LVU385
+ 1446 0042 BFB2     		uxth	r7, r7
+ 107:Frame.cpp     ****             y= (Bloc / FRAME_GRILLE) * m_BlocHeight;
+ 1447              		.loc 1 107 14 view .LVU386
+ 1448 0044 16FB02F6 		smulbb	r6, r6, r2
+ 1449 0048 B6B2     		uxth	r6, r6
+ 1450              	.LVL96:
+ 108:Frame.cpp     ****         
+ 1451              		.loc 1 108 13 is_stmt 1 view .LVU387
+ 108:Frame.cpp     ****         
+ 1452              		.loc 1 108 13 is_stmt 0 view .LVU388
+ 1453 004a 03E0     		b	.L76
+ 1454              	.LVL97:
+ 1455              	.L89:
+ 1456              	.LBB247:
+ 1457              	.LBB248:
+ 1458              	.LBB249:
+ 1459              	.LBB250:
+  85:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** }
+ 1460              		.loc 3 85 3 view .LVU389
+ 1461              		.syntax unified
+ 1462              	@ 85 "../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h" 1
+ 1463 004c 62B6     		cpsie i
+ 1464              	@ 0 "" 2
+ 1465              		.thumb
+ 1466              		.syntax unified
+ 1467              	.LBE250:
+ 1468              	.LBE249:
+ 123:Frame.cpp     ****     }
+ 1469              		.loc 1 123 9 is_stmt 1 view .LVU390
+ 1470              	.LVL98:
+ 1471              	.L74:
+ 123:Frame.cpp     ****     }
+ 1472              		.loc 1 123 9 is_stmt 0 view .LVU391
+ 1473              	.LBE248:
+ 1474              	.LBE247:
+ 111:Frame.cpp     ****             }
+ 1475              		.loc 1 111 17 is_stmt 1 view .LVU392
+ 111:Frame.cpp     ****             }
+ 1476              		.loc 1 111 35 is_stmt 0 view .LVU393
+ 1477 004e 0120     		movs	r0, #1
+ 1478 0050 FFF7FEFF 		bl	_ZN5daisy6System10DelayTicksEm
+ 1479              	.LVL99:
+ 1480              	.L76:
+ 110:Frame.cpp     ****                 System::DelayTicks(1);
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 44
+
+
+ 1481              		.loc 1 110 13 is_stmt 1 view .LVU394
+ 110:Frame.cpp     ****                 System::DelayTicks(1);
+ 1482              		.loc 1 110 33 view .LVU395
+ 1483              	.LBB256:
+ 1484              	.LBI247:
+ 119:Frame.cpp     ****     __disable_irq();
+ 1485              		.loc 1 119 7 view .LVU396
+ 1486              	.LBB255:
+ 120:Frame.cpp     ****     if(m_FIFO_NbElements >= SIZE_FIFO){
+ 1487              		.loc 1 120 5 view .LVU397
+ 1488              	.LBB252:
+ 1489              	.LBI252:
+  94:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** {
+ 1490              		.loc 3 94 53 view .LVU398
+ 1491              	.LBB253:
+ 1492              		.loc 3 96 3 view .LVU399
+ 1493              		.syntax unified
+ 1494              	@ 96 "../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h" 1
+ 1495 0054 72B6     		cpsid i
+ 1496              	@ 0 "" 2
+ 1497              		.thumb
+ 1498              		.syntax unified
+ 1499              	.LBE253:
+ 1500              	.LBE252:
+ 121:Frame.cpp     ****         __enable_irq();
+ 1501              		.loc 1 121 5 view .LVU400
+ 122:Frame.cpp     ****         return false;
+ 1502              		.loc 1 122 9 view .LVU401
+ 1503              	.LBB254:
+ 1504              	.LBI249:
+  83:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** {
+ 1505              		.loc 3 83 53 view .LVU402
+ 1506              	.LBB251:
+  85:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** }
+ 1507              		.loc 3 85 3 view .LVU403
+ 1508              	.LBE251:
+ 1509              	.LBE254:
+ 121:Frame.cpp     ****         __enable_irq();
+ 1510              		.loc 1 121 5 is_stmt 0 view .LVU404
+ 1511 0056 B4F8D430 		ldrh	r3, [r4, #212]
+ 1512 005a 3A46     		mov	r2, r7
+ 1513 005c 3146     		mov	r1, r6
+ 1514 005e 2046     		mov	r0, r4
+ 1515 0060 092B     		cmp	r3, #9
+ 1516 0062 F3D8     		bhi	.L89
+ 1517              	.LVL100:
+ 121:Frame.cpp     ****         __enable_irq();
+ 1518              		.loc 1 121 5 view .LVU405
+ 1519 0064 FFF7FEFF 		bl	_ZN10cRBG_Frame7AddBlocEtt.part.0
+ 1520              	.LVL101:
+ 121:Frame.cpp     ****         __enable_irq();
+ 1521              		.loc 1 121 5 view .LVU406
+ 1522              	.LBE255:
+ 1523              	.LBE256:
+ 110:Frame.cpp     ****                 System::DelayTicks(1);
+ 1524              		.loc 1 110 33 view .LVU407
+ 1525 0068 0028     		cmp	r0, #0
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 45
+
+
+ 1526 006a F0D0     		beq	.L74
+ 113:Frame.cpp     ****         }
+ 1527              		.loc 1 113 13 is_stmt 1 view .LVU408
+ 1528              	.LVL102:
+ 1529              	.LBB257:
+ 1530              	.LBI257:
+ 142:Frame.cpp     ****     // Le FIFO n'est-il vide ou en cours de transmission
+ 1531              		.loc 1 142 6 view .LVU409
+ 1532              	.LBB258:
+ 144:Frame.cpp     ****     if((m_FIFO_NbElements == 0) || (m_Busy == true)){
+ 1533              		.loc 1 144 5 view .LVU410
+ 1534              	.LBB259:
+ 1535              	.LBI259:
+  94:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** {
+ 1536              		.loc 3 94 53 view .LVU411
+ 1537              	.LBB260:
+ 1538              		.loc 3 96 3 view .LVU412
+ 1539              		.syntax unified
+ 1540              	@ 96 "../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h" 1
+ 1541 006c 72B6     		cpsid i
+ 1542              	@ 0 "" 2
+ 1543              		.thumb
+ 1544              		.syntax unified
+ 1545              	.LBE260:
+ 1546              	.LBE259:
+ 145:Frame.cpp     ****         __enable_irq();
+ 1547              		.loc 1 145 5 view .LVU413
+ 1548 006e B4F8D430 		ldrh	r3, [r4, #212]
+ 1549 0072 23B3     		cbz	r3, .L77
+ 145:Frame.cpp     ****         __enable_irq();
+ 1550              		.loc 1 145 33 is_stmt 0 view .LVU414
+ 1551 0074 94F8D660 		ldrb	r6, [r4, #214]	@ zero_extendqisi2
+ 1552              	.LVL103:
+ 145:Frame.cpp     ****         __enable_irq();
+ 1553              		.loc 1 145 33 view .LVU415
+ 1554 0078 0EBB     		cbnz	r6, .L77
+ 1555              	.LVL104:
+ 1556              	.LBB261:
+ 1557              	.LBI261:
+ 142:Frame.cpp     ****     // Le FIFO n'est-il vide ou en cours de transmission
+ 1558              		.loc 1 142 6 is_stmt 1 view .LVU416
+ 1559              	.LBB262:
+ 149:Frame.cpp     **** 
+ 1560              		.loc 1 149 5 view .LVU417
+ 1561              	.LBB263:
+ 1562              	.LBI263:
+  83:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** {
+ 1563              		.loc 3 83 53 view .LVU418
+ 1564              	.LBB264:
+  85:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** }
+ 1565              		.loc 3 85 3 view .LVU419
+ 1566              		.syntax unified
+ 1567              	@ 85 "../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h" 1
+ 1568 007a 62B6     		cpsie i
+ 1569              	@ 0 "" 2
+ 1570              		.thumb
+ 1571              		.syntax unified
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 46
+
+
+ 1572              	.LBE264:
+ 1573              	.LBE263:
+ 152:Frame.cpp     ****     SendDMACommand(&m_pFIFO->m_CmdCASET[m_FIFO_out].m_Commande, cRBG_Frame::sendCASETDMAData, this)
+ 1574              		.loc 1 152 5 view .LVU420
+ 153:Frame.cpp     ****     return true;
+ 1575              		.loc 1 153 19 is_stmt 0 view .LVU421
+ 1576 007c B4F8D230 		ldrh	r3, [r4, #210]
+ 152:Frame.cpp     ****     SendDMACommand(&m_pFIFO->m_CmdCASET[m_FIFO_out].m_Commande, cRBG_Frame::sendCASETDMAData, this)
+ 1577              		.loc 1 152 12 view .LVU422
+ 1578 0080 4FF00109 		mov	r9, #1
+ 153:Frame.cpp     ****     return true;
+ 1579              		.loc 1 153 19 view .LVU423
+ 1580 0084 D4F8CC70 		ldr	r7, [r4, #204]
+ 1581              	.LVL105:
+ 1582              	.LBB265:
+ 1583              	.LBB266:
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 1584              		.loc 2 84 19 view .LVU424
+ 1585 0088 3146     		mov	r1, r6
+ 1586              	.LVL106:
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 1587              		.loc 2 84 19 view .LVU425
+ 1588              	.LBE266:
+ 1589              	.LBE265:
+ 153:Frame.cpp     ****     return true;
+ 1590              		.loc 1 153 19 view .LVU426
+ 1591 008a 03EB8303 		add	r3, r3, r3, lsl #2
+ 1592              	.LBB270:
+ 1593              	.LBB267:
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 1594              		.loc 2 84 19 view .LVU427
+ 1595 008e 04F14000 		add	r0, r4, #64
+ 1596              	.LBE267:
+ 1597              	.LBE270:
+ 1598              	.LBE262:
+ 1599              	.LBE261:
+ 1600              	.LBE258:
+ 1601              	.LBE257:
+ 104:Frame.cpp     ****         if(getBlocChange(Bloc) == true){
+ 1602              		.loc 1 104 5 view .LVU428
+ 1603 0092 0135     		adds	r5, r5, #1
+ 1604              	.LVL107:
+ 1605              	.LBB282:
+ 1606              	.LBB279:
+ 1607              	.LBB275:
+ 1608              	.LBB273:
+ 152:Frame.cpp     ****     SendDMACommand(&m_pFIFO->m_CmdCASET[m_FIFO_out].m_Commande, cRBG_Frame::sendCASETDMAData, this)
+ 1609              		.loc 1 152 12 view .LVU429
+ 1610 0094 84F8D690 		strb	r9, [r4, #214]
+ 153:Frame.cpp     ****     return true;
+ 1611              		.loc 1 153 5 is_stmt 1 view .LVU430
+ 153:Frame.cpp     ****     return true;
+ 1612              		.loc 1 153 19 is_stmt 0 view .LVU431
+ 1613 0098 1F44     		add	r7, r7, r3
+ 1614              	.LVL108:
+ 1615              	.LBB271:
+ 1616              	.LBI265:
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 47
+
+
+  82:TFT_SPI.h     ****     {
+ 1617              		.loc 2 82 17 is_stmt 1 view .LVU432
+ 1618              	.LBB268:
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 1619              		.loc 2 84 9 view .LVU433
+  84:TFT_SPI.h     ****         m_spi.DmaTransmit(cmd, 1, NULL, end_callback, callback_context);
+ 1620              		.loc 2 84 19 is_stmt 0 view .LVU434
+ 1621 009a FFF7FEFF 		bl	_ZN5daisy4GPIO5WriteEb
+ 1622              	.LVL109:
+  85:TFT_SPI.h     ****     }
+ 1623              		.loc 2 85 9 is_stmt 1 view .LVU435
+  85:TFT_SPI.h     ****     }
+ 1624              		.loc 2 85 26 is_stmt 0 view .LVU436
+ 1625 009e DFF828C0 		ldr	ip, .L90+4
+ 1626              	.LBE268:
+ 1627              	.LBE271:
+ 1628              	.LBE273:
+ 1629              	.LBE275:
+ 1630              	.LBE279:
+ 1631              	.LBE282:
+ 104:Frame.cpp     ****         if(getBlocChange(Bloc) == true){
+ 1632              		.loc 1 104 5 view .LVU437
+ 1633 00a2 ADB2     		uxth	r5, r5
+ 1634              	.LBB283:
+ 1635              	.LBB280:
+ 1636              	.LBB276:
+ 1637              	.LBB274:
+ 1638              	.LBB272:
+ 1639              	.LBB269:
+  85:TFT_SPI.h     ****     }
+ 1640              		.loc 2 85 26 view .LVU438
+ 1641 00a4 3346     		mov	r3, r6
+ 1642 00a6 4A46     		mov	r2, r9
+ 1643 00a8 3946     		mov	r1, r7
+ 1644 00aa 2046     		mov	r0, r4
+ 1645 00ac CDE900C4 		strd	ip, r4, [sp]
+ 1646 00b0 FFF7FEFF 		bl	_ZN5daisy9SpiHandle11DmaTransmitEPhjPFvPvEPFvS2_NS0_6ResultEES2_
+ 1647              	.LVL110:
+  85:TFT_SPI.h     ****     }
+ 1648              		.loc 2 85 26 view .LVU439
+ 1649              	.LBE269:
+ 1650              	.LBE272:
+ 154:Frame.cpp     **** }
+ 1651              		.loc 1 154 5 is_stmt 1 view .LVU440
+ 154:Frame.cpp     **** }
+ 1652              		.loc 1 154 5 is_stmt 0 view .LVU441
+ 1653              	.LBE274:
+ 1654              	.LBE276:
+ 1655              	.LBE280:
+ 1656              	.LBE283:
+ 104:Frame.cpp     ****         if(getBlocChange(Bloc) == true){
+ 1657              		.loc 1 104 5 is_stmt 1 view .LVU442
+ 104:Frame.cpp     ****         if(getBlocChange(Bloc) == true){
+ 1658              		.loc 1 104 33 view .LVU443
+ 1659 00b4 642D     		cmp	r5, #100
+ 1660 00b6 AFD1     		bne	.L79
+ 1661              	.L88:
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 48
+
+
+ 104:Frame.cpp     ****         if(getBlocChange(Bloc) == true){
+ 1662              		.loc 1 104 33 is_stmt 0 view .LVU444
+ 1663              	.LBE286:
+ 116:Frame.cpp     **** // --------------------------------------------------------------------------
+ 1664              		.loc 1 116 1 view .LVU445
+ 1665 00b8 03B0     		add	sp, sp, #12
+ 1666              		.cfi_remember_state
+ 1667              		.cfi_def_cfa_offset 28
+ 1668              		@ sp needed
+ 1669 00ba BDE8F083 		pop	{r4, r5, r6, r7, r8, r9, pc}
+ 1670              	.LVL111:
+ 1671              	.L77:
+ 1672              		.cfi_restore_state
+ 1673              	.LBB287:
+ 1674              	.LBB284:
+ 1675              	.LBB281:
+ 146:Frame.cpp     ****         return false;
+ 1676              		.loc 1 146 9 is_stmt 1 view .LVU446
+ 1677              	.LBB277:
+ 1678              	.LBI277:
+  83:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** {
+ 1679              		.loc 3 83 53 view .LVU447
+ 1680              	.LBB278:
+  85:../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h **** }
+ 1681              		.loc 3 85 3 view .LVU448
+ 1682              		.syntax unified
+ 1683              	@ 85 "../../../../Desktop/DaisyExamples/libDaisy//Drivers/CMSIS/Include/cmsis_gcc.h" 1
+ 1684 00be 62B6     		cpsie i
+ 1685              	@ 0 "" 2
+ 1686              		.thumb
+ 1687              		.syntax unified
+ 1688              	.LBE278:
+ 1689              	.LBE277:
+ 147:Frame.cpp     ****     }
+ 1690              		.loc 1 147 9 view .LVU449
+ 147:Frame.cpp     ****     }
+ 1691              		.loc 1 147 16 is_stmt 0 view .LVU450
+ 1692 00c0 A6E7     		b	.L72
+ 1693              	.L91:
+ 1694 00c2 00BF     		.align	2
+ 1695              	.L90:
+ 1696 00c4 CDCCCCCC 		.word	-858993459
+ 1697 00c8 00000000 		.word	_ZN10cRBG_Frame16sendCASETDMADataEPvN5daisy9SpiHandle6ResultE
+ 1698              	.LBE281:
+ 1699              	.LBE284:
+ 1700              	.LBE287:
+ 1701              		.cfi_endproc
+ 1702              	.LFE2609:
+ 1704              		.section	.text._ZN10cRBG_Frame9InitBlocsEv,"ax",%progbits
+ 1705              		.align	1
+ 1706              		.p2align 2,,3
+ 1707              		.global	_ZN10cRBG_Frame9InitBlocsEv
+ 1708              		.syntax unified
+ 1709              		.thumb
+ 1710              		.thumb_func
+ 1711              		.fpu fpv5-d16
+ 1713              	_ZN10cRBG_Frame9InitBlocsEv:
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 49
+
+
+ 1714              	.LVL112:
+ 1715              	.LFB2606:
+  60:Frame.cpp     ****     RGB *pFrame = m_pFrame;
+ 1716              		.loc 1 60 29 is_stmt 1 view -0
+ 1717              		.cfi_startproc
+ 1718              		@ args = 0, pretend = 0, frame = 0
+ 1719              		@ frame_needed = 0, uses_anonymous_args = 0
+  61:Frame.cpp     ****     for(uint16_t y =0; y < m_Height ; y ++){
+ 1720              		.loc 1 61 5 view .LVU452
+  60:Frame.cpp     ****     RGB *pFrame = m_pFrame;
+ 1721              		.loc 1 60 29 is_stmt 0 view .LVU453
+ 1722 0000 2DE9F047 		push	{r4, r5, r6, r7, r8, r9, r10, lr}
+ 1723              		.cfi_def_cfa_offset 32
+ 1724              		.cfi_offset 4, -32
+ 1725              		.cfi_offset 5, -28
+ 1726              		.cfi_offset 6, -24
+ 1727              		.cfi_offset 7, -20
+ 1728              		.cfi_offset 8, -16
+ 1729              		.cfi_offset 9, -12
+ 1730              		.cfi_offset 10, -8
+ 1731              		.cfi_offset 14, -4
+ 1732              	.LBB288:
+  62:Frame.cpp     ****         for(uint16_t x = 0; x < m_Width ; x++){
+ 1733              		.loc 1 62 28 view .LVU454
+ 1734 0004 B0F85E90 		ldrh	r9, [r0, #94]
+ 1735              	.LBE288:
+  60:Frame.cpp     ****     RGB *pFrame = m_pFrame;
+ 1736              		.loc 1 60 29 view .LVU455
+ 1737 0008 0446     		mov	r4, r0
+  61:Frame.cpp     ****     for(uint16_t y =0; y < m_Height ; y ++){
+ 1738              		.loc 1 61 10 view .LVU456
+ 1739 000a 476D     		ldr	r7, [r0, #84]
+ 1740              	.LVL113:
+  62:Frame.cpp     ****         for(uint16_t x = 0; x < m_Width ; x++){
+ 1741              		.loc 1 62 5 is_stmt 1 view .LVU457
+ 1742              	.LBB295:
+  62:Frame.cpp     ****         for(uint16_t x = 0; x < m_Width ; x++){
+ 1743              		.loc 1 62 26 view .LVU458
+ 1744 000c B9F1000F 		cmp	r9, #0
+ 1745 0010 38D0     		beq	.L93
+ 1746              	.LBB289:
+  63:Frame.cpp     ****             uint16_t Bloc = (x/m_BlocWidth)+((y/m_BlocHeight)*(FRAME_GRILLE));
+ 1747              		.loc 1 63 33 is_stmt 0 view .LVU459
+ 1748 0012 B0F85C00 		ldrh	r0, [r0, #92]
+ 1749              	.LVL114:
+  63:Frame.cpp     ****             uint16_t Bloc = (x/m_BlocWidth)+((y/m_BlocHeight)*(FRAME_GRILLE));
+ 1750              		.loc 1 63 33 view .LVU460
+ 1751 0016 0026     		movs	r6, #0
+ 1752 0018 00F1FF38 		add	r8, r0, #-1
+ 1753 001c 3346     		mov	r3, r6
+ 1754 001e 1FFA88F8 		uxth	r8, r8
+ 1755 0022 08F10108 		add	r8, r8, #1
+ 1756 0026 4FEAC808 		lsl	r8, r8, #3
+ 1757              	.LVL115:
+ 1758              	.L96:
+  63:Frame.cpp     ****             uint16_t Bloc = (x/m_BlocWidth)+((y/m_BlocHeight)*(FRAME_GRILLE));
+ 1759              		.loc 1 63 31 is_stmt 1 view .LVU461
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 50
+
+
+ 1760 002a 38B3     		cbz	r0, .L94
+ 1761              	.LBB290:
+  64:Frame.cpp     ****             pFrame->m_pChange = &m_BlocChange[Bloc];
+ 1762              		.loc 1 64 48 is_stmt 0 view .LVU462
+ 1763 002c B4F866E0 		ldrh	lr, [r4, #102]
+  64:Frame.cpp     ****             pFrame->m_pChange = &m_BlocChange[Bloc];
+ 1764              		.loc 1 64 44 view .LVU463
+ 1765 0030 0021     		movs	r1, #0
+  64:Frame.cpp     ****             pFrame->m_pChange = &m_BlocChange[Bloc];
+ 1766              		.loc 1 64 32 view .LVU464
+ 1767 0032 B4F86450 		ldrh	r5, [r4, #100]
+ 1768 0036 07F10802 		add	r2, r7, #8
+ 1769 003a 8C46     		mov	ip, r1
+  64:Frame.cpp     ****             pFrame->m_pChange = &m_BlocChange[Bloc];
+ 1770              		.loc 1 64 48 view .LVU465
+ 1771 003c B3FBFEF3 		udiv	r3, r3, lr
+  64:Frame.cpp     ****             pFrame->m_pChange = &m_BlocChange[Bloc];
+ 1772              		.loc 1 64 44 view .LVU466
+ 1773 0040 03EB8303 		add	r3, r3, r3, lsl #2
+ 1774 0044 4FEA430E 		lsl	lr, r3, #1
+ 1775 0048 1FFA8EFE 		uxth	lr, lr
+ 1776              	.LVL116:
+ 1777              	.L95:
+  64:Frame.cpp     ****             pFrame->m_pChange = &m_BlocChange[Bloc];
+ 1778              		.loc 1 64 13 is_stmt 1 discriminator 2 view .LVU467
+  65:Frame.cpp     ****             pFrame->B = 0;
+ 1779              		.loc 1 65 13 discriminator 2 view .LVU468
+ 1780              	.LBE290:
+  63:Frame.cpp     ****             uint16_t Bloc = (x/m_BlocWidth)+((y/m_BlocHeight)*(FRAME_GRILLE));
+ 1781              		.loc 1 63 31 is_stmt 0 discriminator 2 view .LVU469
+ 1782 004c 0131     		adds	r1, r1, #1
+ 1783              	.LVL117:
+  63:Frame.cpp     ****             uint16_t Bloc = (x/m_BlocWidth)+((y/m_BlocHeight)*(FRAME_GRILLE));
+ 1784              		.loc 1 63 31 discriminator 2 view .LVU470
+ 1785 004e 0832     		adds	r2, r2, #8
+ 1786              	.LVL118:
+ 1787              	.LBB291:
+  66:Frame.cpp     ****             pFrame->G = 0;
+ 1788              		.loc 1 66 23 discriminator 2 view .LVU471
+ 1789 0050 4FF0000A 		mov	r10, #0
+  64:Frame.cpp     ****             pFrame->m_pChange = &m_BlocChange[Bloc];
+ 1790              		.loc 1 64 31 discriminator 2 view .LVU472
+ 1791 0054 BCFBF5F3 		udiv	r3, ip, r5
+  64:Frame.cpp     ****             pFrame->m_pChange = &m_BlocChange[Bloc];
+ 1792              		.loc 1 64 22 discriminator 2 view .LVU473
+ 1793 0058 7344     		add	r3, r3, lr
+ 1794              	.LBE291:
+  63:Frame.cpp     ****             uint16_t Bloc = (x/m_BlocWidth)+((y/m_BlocHeight)*(FRAME_GRILLE));
+ 1795              		.loc 1 63 31 discriminator 2 view .LVU474
+ 1796 005a 1FFA81FC 		uxth	ip, r1
+ 1797              	.LBB292:
+  66:Frame.cpp     ****             pFrame->G = 0;
+ 1798              		.loc 1 66 23 discriminator 2 view .LVU475
+ 1799 005e 02F80EAC 		strb	r10, [r2, #-14]
+  65:Frame.cpp     ****             pFrame->B = 0;
+ 1800              		.loc 1 65 33 discriminator 2 view .LVU476
+ 1801 0062 9BB2     		uxth	r3, r3
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 51
+
+
+ 1802              	.LBE292:
+  63:Frame.cpp     ****             uint16_t Bloc = (x/m_BlocWidth)+((y/m_BlocHeight)*(FRAME_GRILLE));
+ 1803              		.loc 1 63 31 discriminator 2 view .LVU477
+ 1804 0064 8445     		cmp	ip, r0
+ 1805              	.LBB293:
+  67:Frame.cpp     ****             pFrame->R = 0;
+ 1806              		.loc 1 67 23 discriminator 2 view .LVU478
+ 1807 0066 02F80FAC 		strb	r10, [r2, #-15]
+  65:Frame.cpp     ****             pFrame->B = 0;
+ 1808              		.loc 1 65 33 discriminator 2 view .LVU479
+ 1809 006a 03F16803 		add	r3, r3, #104
+  68:Frame.cpp     ****             pFrame++;
+ 1810              		.loc 1 68 23 discriminator 2 view .LVU480
+ 1811 006e 02F810AC 		strb	r10, [r2, #-16]
+  65:Frame.cpp     ****             pFrame->B = 0;
+ 1812              		.loc 1 65 33 discriminator 2 view .LVU481
+ 1813 0072 2344     		add	r3, r3, r4
+  65:Frame.cpp     ****             pFrame->B = 0;
+ 1814              		.loc 1 65 31 discriminator 2 view .LVU482
+ 1815 0074 42F80C3C 		str	r3, [r2, #-12]
+  66:Frame.cpp     ****             pFrame->G = 0;
+ 1816              		.loc 1 66 13 is_stmt 1 discriminator 2 view .LVU483
+  67:Frame.cpp     ****             pFrame->R = 0;
+ 1817              		.loc 1 67 13 discriminator 2 view .LVU484
+  68:Frame.cpp     ****             pFrame++;
+ 1818              		.loc 1 68 13 discriminator 2 view .LVU485
+  69:Frame.cpp     ****         }
+ 1819              		.loc 1 69 13 discriminator 2 view .LVU486
+ 1820              	.LVL119:
+  69:Frame.cpp     ****         }
+ 1821              		.loc 1 69 13 is_stmt 0 discriminator 2 view .LVU487
+ 1822              	.LBE293:
+  63:Frame.cpp     ****             uint16_t Bloc = (x/m_BlocWidth)+((y/m_BlocHeight)*(FRAME_GRILLE));
+ 1823              		.loc 1 63 9 is_stmt 1 discriminator 2 view .LVU488
+  63:Frame.cpp     ****             uint16_t Bloc = (x/m_BlocWidth)+((y/m_BlocHeight)*(FRAME_GRILLE));
+ 1824              		.loc 1 63 31 discriminator 2 view .LVU489
+ 1825 0078 E8D3     		bcc	.L95
+ 1826              	.LBB294:
+  69:Frame.cpp     ****         }
+ 1827              		.loc 1 69 19 is_stmt 0 view .LVU490
+ 1828 007a 4744     		add	r7, r7, r8
+ 1829              	.L94:
+  69:Frame.cpp     ****         }
+ 1830              		.loc 1 69 19 view .LVU491
+ 1831              	.LBE294:
+ 1832              	.LBE289:
+  62:Frame.cpp     ****         for(uint16_t x = 0; x < m_Width ; x++){
+ 1833              		.loc 1 62 5 is_stmt 1 discriminator 2 view .LVU492
+ 1834              	.LVL120:
+  62:Frame.cpp     ****         for(uint16_t x = 0; x < m_Width ; x++){
+ 1835              		.loc 1 62 26 discriminator 2 view .LVU493
+ 1836 007c 0136     		adds	r6, r6, #1
+ 1837              	.LVL121:
+  62:Frame.cpp     ****         for(uint16_t x = 0; x < m_Width ; x++){
+ 1838              		.loc 1 62 26 is_stmt 0 discriminator 2 view .LVU494
+ 1839 007e B3B2     		uxth	r3, r6
+ 1840 0080 9945     		cmp	r9, r3
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 52
+
+
+ 1841 0082 D2D8     		bhi	.L96
+ 1842              	.L93:
+  62:Frame.cpp     ****         for(uint16_t x = 0; x < m_Width ; x++){
+ 1843              		.loc 1 62 26 discriminator 2 view .LVU495
+ 1844              	.LBE295:
+ 1845              	.LBB296:
+  73:Frame.cpp     ****     }
+ 1846              		.loc 1 73 32 view .LVU496
+ 1847 0084 04F16800 		add	r0, r4, #104
+ 1848 0088 6422     		movs	r2, #100
+ 1849 008a 0121     		movs	r1, #1
+ 1850 008c FFF7FEFF 		bl	memset
+ 1851              	.LVL122:
+ 1852              	.LBE296:
+  75:Frame.cpp     **** }
+ 1853              		.loc 1 75 5 is_stmt 1 view .LVU497
+  75:Frame.cpp     **** }
+ 1854              		.loc 1 75 15 is_stmt 0 view .LVU498
+ 1855 0090 2046     		mov	r0, r4
+  76:Frame.cpp     **** 
+ 1856              		.loc 1 76 1 view .LVU499
+ 1857 0092 BDE8F047 		pop	{r4, r5, r6, r7, r8, r9, r10, lr}
+ 1858              		.cfi_restore 14
+ 1859              		.cfi_restore 10
+ 1860              		.cfi_restore 9
+ 1861              		.cfi_restore 8
+ 1862              		.cfi_restore 7
+ 1863              		.cfi_restore 6
+ 1864              		.cfi_restore 5
+ 1865              		.cfi_restore 4
+ 1866              		.cfi_def_cfa_offset 0
+ 1867              	.LVL123:
+  75:Frame.cpp     **** }
+ 1868              		.loc 1 75 15 view .LVU500
+ 1869 0096 FFF7FEBF 		b	_ZN10cRBG_Frame10FlushFrameEv
+ 1870              	.LVL124:
+  75:Frame.cpp     **** }
+ 1871              		.loc 1 75 15 view .LVU501
+ 1872              		.cfi_endproc
+ 1873              	.LFE2606:
+ 1875 009a 00BF     		.section	.text._ZN10cRBG_Frame8setFrameEP3RGBP9FIFO_Datatt,"ax",%progbits
+ 1876              		.align	1
+ 1877              		.p2align 2,,3
+ 1878              		.global	_ZN10cRBG_Frame8setFrameEP3RGBP9FIFO_Datatt
+ 1879              		.syntax unified
+ 1880              		.thumb
+ 1881              		.thumb_func
+ 1882              		.fpu fpv5-d16
+ 1884              	_ZN10cRBG_Frame8setFrameEP3RGBP9FIFO_Datatt:
+ 1885              	.LVL125:
+ 1886              	.LFB2604:
+  20:Frame.cpp     ****     Init_TFT_SPI();
+ 1887              		.loc 1 20 101 is_stmt 1 view -0
+ 1888              		.cfi_startproc
+ 1889              		@ args = 4, pretend = 0, frame = 0
+ 1890              		@ frame_needed = 0, uses_anonymous_args = 0
+  21:Frame.cpp     ****     m_pFrame = pFrameBuff;
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 53
+
+
+ 1891              		.loc 1 21 5 view .LVU503
+  20:Frame.cpp     ****     Init_TFT_SPI();
+ 1892              		.loc 1 20 101 is_stmt 0 view .LVU504
+ 1893 0000 2DE9F041 		push	{r4, r5, r6, r7, r8, lr}
+ 1894              		.cfi_def_cfa_offset 24
+ 1895              		.cfi_offset 4, -24
+ 1896              		.cfi_offset 5, -20
+ 1897              		.cfi_offset 6, -16
+ 1898              		.cfi_offset 7, -12
+ 1899              		.cfi_offset 8, -8
+ 1900              		.cfi_offset 14, -4
+  20:Frame.cpp     ****     Init_TFT_SPI();
+ 1901              		.loc 1 20 101 view .LVU505
+ 1902 0004 0446     		mov	r4, r0
+ 1903 0006 1D46     		mov	r5, r3
+ 1904 0008 1746     		mov	r7, r2
+ 1905 000a BDF81860 		ldrh	r6, [sp, #24]
+ 1906 000e 8846     		mov	r8, r1
+  21:Frame.cpp     ****     m_pFrame = pFrameBuff;
+ 1907              		.loc 1 21 17 view .LVU506
+ 1908 0010 FFF7FEFF 		bl	_ZN7TFT_SPI12Init_TFT_SPIEv
+ 1909              	.LVL126:
+  22:Frame.cpp     ****     m_pFIFO = pFIFO_Data;
+ 1910              		.loc 1 22 5 is_stmt 1 view .LVU507
+  28:Frame.cpp     ****     m_InitBlocWidth = Width/FRAME_GRILLE;
+ 1911              		.loc 1 28 24 is_stmt 0 view .LVU508
+ 1912 0014 0F4B     		ldr	r3, .L108
+  33:Frame.cpp     **** }
+ 1913              		.loc 1 33 14 view .LVU509
+ 1914 0016 2046     		mov	r0, r4
+  24:Frame.cpp     ****     m_InitWidth = Width;
+ 1915              		.loc 1 24 13 view .LVU510
+ 1916 0018 A4F85C50 		strh	r5, [r4, #92]	@ movhi
+  25:Frame.cpp     ****     m_Height = Height;
+ 1917              		.loc 1 25 17 view .LVU511
+ 1918 001c A4F85850 		strh	r5, [r4, #88]	@ movhi
+  28:Frame.cpp     ****     m_InitBlocWidth = Width/FRAME_GRILLE;
+ 1919              		.loc 1 28 24 view .LVU512
+ 1920 0020 A3FB0525 		umull	r2, r5, r3, r5
+  30:Frame.cpp     ****     m_InitBlocHeight = Height/FRAME_GRILLE;
+ 1921              		.loc 1 30 26 view .LVU513
+ 1922 0024 A3FB0623 		umull	r2, r3, r3, r6
+  28:Frame.cpp     ****     m_InitBlocWidth = Width/FRAME_GRILLE;
+ 1923              		.loc 1 28 24 view .LVU514
+ 1924 0028 ED08     		lsrs	r5, r5, #3
+  22:Frame.cpp     ****     m_pFIFO = pFIFO_Data;
+ 1925              		.loc 1 22 14 view .LVU515
+ 1926 002a C4F85480 		str	r8, [r4, #84]
+  23:Frame.cpp     ****     m_Width = Width;
+ 1927              		.loc 1 23 5 is_stmt 1 view .LVU516
+  30:Frame.cpp     ****     m_InitBlocHeight = Height/FRAME_GRILLE;
+ 1928              		.loc 1 30 26 is_stmt 0 view .LVU517
+ 1929 002e DB08     		lsrs	r3, r3, #3
+  23:Frame.cpp     ****     m_Width = Width;
+ 1930              		.loc 1 23 13 view .LVU518
+ 1931 0030 C4F8CC70 		str	r7, [r4, #204]
+  24:Frame.cpp     ****     m_InitWidth = Width;
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 54
+
+
+ 1932              		.loc 1 24 5 is_stmt 1 view .LVU519
+  25:Frame.cpp     ****     m_Height = Height;
+ 1933              		.loc 1 25 5 view .LVU520
+  26:Frame.cpp     ****     m_InitHeight = Height;
+ 1934              		.loc 1 26 5 view .LVU521
+  26:Frame.cpp     ****     m_InitHeight = Height;
+ 1935              		.loc 1 26 14 is_stmt 0 view .LVU522
+ 1936 0034 A4F85E60 		strh	r6, [r4, #94]	@ movhi
+  27:Frame.cpp     ****     m_BlocWidth = Width/FRAME_GRILLE;
+ 1937              		.loc 1 27 5 is_stmt 1 view .LVU523
+  27:Frame.cpp     ****     m_BlocWidth = Width/FRAME_GRILLE;
+ 1938              		.loc 1 27 18 is_stmt 0 view .LVU524
+ 1939 0038 A4F85A60 		strh	r6, [r4, #90]	@ movhi
+  28:Frame.cpp     ****     m_InitBlocWidth = Width/FRAME_GRILLE;
+ 1940              		.loc 1 28 5 is_stmt 1 view .LVU525
+  28:Frame.cpp     ****     m_InitBlocWidth = Width/FRAME_GRILLE;
+ 1941              		.loc 1 28 17 is_stmt 0 view .LVU526
+ 1942 003c A4F86450 		strh	r5, [r4, #100]	@ movhi
+  29:Frame.cpp     ****     m_BlocHeight = Height/FRAME_GRILLE;
+ 1943              		.loc 1 29 5 is_stmt 1 view .LVU527
+  29:Frame.cpp     ****     m_BlocHeight = Height/FRAME_GRILLE;
+ 1944              		.loc 1 29 21 is_stmt 0 view .LVU528
+ 1945 0040 A4F86050 		strh	r5, [r4, #96]	@ movhi
+  30:Frame.cpp     ****     m_InitBlocHeight = Height/FRAME_GRILLE;
+ 1946              		.loc 1 30 5 is_stmt 1 view .LVU529
+  30:Frame.cpp     ****     m_InitBlocHeight = Height/FRAME_GRILLE;
+ 1947              		.loc 1 30 18 is_stmt 0 view .LVU530
+ 1948 0044 A4F86630 		strh	r3, [r4, #102]	@ movhi
+  31:Frame.cpp     **** 
+ 1949              		.loc 1 31 5 is_stmt 1 view .LVU531
+  31:Frame.cpp     **** 
+ 1950              		.loc 1 31 22 is_stmt 0 view .LVU532
+ 1951 0048 A4F86230 		strh	r3, [r4, #98]	@ movhi
+  33:Frame.cpp     **** }
+ 1952              		.loc 1 33 5 is_stmt 1 view .LVU533
+  34:Frame.cpp     **** 
+ 1953              		.loc 1 34 1 is_stmt 0 view .LVU534
+ 1954 004c BDE8F041 		pop	{r4, r5, r6, r7, r8, lr}
+ 1955              		.cfi_restore 14
+ 1956              		.cfi_restore 8
+ 1957              		.cfi_restore 7
+ 1958              		.cfi_restore 6
+ 1959              		.cfi_restore 5
+ 1960              		.cfi_restore 4
+ 1961              		.cfi_def_cfa_offset 0
+ 1962              	.LVL127:
+  33:Frame.cpp     **** }
+ 1963              		.loc 1 33 14 view .LVU535
+ 1964 0050 FFF7FEBF 		b	_ZN10cRBG_Frame9InitBlocsEv
+ 1965              	.LVL128:
+ 1966              	.L109:
+  33:Frame.cpp     **** }
+ 1967              		.loc 1 33 14 view .LVU536
+ 1968              		.align	2
+ 1969              	.L108:
+ 1970 0054 CDCCCCCC 		.word	-858993459
+ 1971              		.cfi_endproc
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 55
+
+
+ 1972              	.LFE2604:
+ 1974              		.section	.text._ZN10cRBG_Frame16setFrameRotationE8Rotation,"ax",%progbits
+ 1975              		.align	1
+ 1976              		.p2align 2,,3
+ 1977              		.global	_ZN10cRBG_Frame16setFrameRotationE8Rotation
+ 1978              		.syntax unified
+ 1979              		.thumb
+ 1980              		.thumb_func
+ 1981              		.fpu fpv5-d16
+ 1983              	_ZN10cRBG_Frame16setFrameRotationE8Rotation:
+ 1984              	.LVL129:
+ 1985              	.LFB2605:
+  38:Frame.cpp     ****     while(m_Busy==true){
+ 1986              		.loc 1 38 47 is_stmt 1 view -0
+ 1987              		.cfi_startproc
+ 1988              		@ args = 0, pretend = 0, frame = 0
+ 1989              		@ frame_needed = 0, uses_anonymous_args = 0
+  39:Frame.cpp     ****         Delay(1);
+ 1990              		.loc 1 39 5 view .LVU538
+  39:Frame.cpp     ****         Delay(1);
+ 1991              		.loc 1 39 17 view .LVU539
+  38:Frame.cpp     ****     while(m_Busy==true){
+ 1992              		.loc 1 38 47 is_stmt 0 view .LVU540
+ 1993 0000 38B5     		push	{r3, r4, r5, lr}
+ 1994              		.cfi_def_cfa_offset 16
+ 1995              		.cfi_offset 3, -16
+ 1996              		.cfi_offset 4, -12
+ 1997              		.cfi_offset 5, -8
+ 1998              		.cfi_offset 14, -4
+  39:Frame.cpp     ****         Delay(1);
+ 1999              		.loc 1 39 17 view .LVU541
+ 2000 0002 90F8D630 		ldrb	r3, [r0, #214]	@ zero_extendqisi2
+  38:Frame.cpp     ****     while(m_Busy==true){
+ 2001              		.loc 1 38 47 view .LVU542
+ 2002 0006 0446     		mov	r4, r0
+ 2003 0008 0D46     		mov	r5, r1
+  39:Frame.cpp     ****         Delay(1);
+ 2004              		.loc 1 39 17 view .LVU543
+ 2005 000a 33B1     		cbz	r3, .L111
+ 2006              	.LVL130:
+ 2007              	.L112:
+  40:Frame.cpp     ****     }
+ 2008              		.loc 1 40 9 is_stmt 1 view .LVU544
+ 2009              	.LBB303:
+ 2010              	.LBI303:
+  94:TFT_SPI.h     ****     }
+  95:TFT_SPI.h     **** 
+  96:TFT_SPI.h     ****     // --------------------------------------------------------------------------
+  97:TFT_SPI.h     ****     // Delay en mimisecondes    
+  98:TFT_SPI.h     ****     inline void Delay(uint32_t msTime){
+ 2011              		.loc 2 98 17 view .LVU545
+ 2012              	.LBB304:
+  99:TFT_SPI.h     ****         System::Delay(msTime);
+ 2013              		.loc 2 99 9 view .LVU546
+ 2014              		.loc 2 99 22 is_stmt 0 view .LVU547
+ 2015 000c 0120     		movs	r0, #1
+ 2016 000e FFF7FEFF 		bl	_ZN5daisy6System5DelayEm
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 56
+
+
+ 2017              	.LVL131:
+ 2018              		.loc 2 99 22 view .LVU548
+ 2019              	.LBE304:
+ 2020              	.LBE303:
+  39:Frame.cpp     ****         Delay(1);
+ 2021              		.loc 1 39 5 is_stmt 1 view .LVU549
+  39:Frame.cpp     ****         Delay(1);
+ 2022              		.loc 1 39 17 view .LVU550
+ 2023 0012 94F8D630 		ldrb	r3, [r4, #214]	@ zero_extendqisi2
+ 2024 0016 002B     		cmp	r3, #0
+ 2025 0018 F8D1     		bne	.L112
+ 2026              	.L111:
+  42:Frame.cpp     ****     switch (r) {
+ 2027              		.loc 1 42 5 view .LVU551
+  42:Frame.cpp     ****     switch (r) {
+ 2028              		.loc 1 42 19 is_stmt 0 view .LVU552
+ 2029 001a 2946     		mov	r1, r5
+ 2030 001c 2046     		mov	r0, r4
+ 2031 001e FFF7FEFF 		bl	_ZN7TFT_SPI14setTFTRotationE8Rotation
+ 2032              	.LVL132:
+  43:Frame.cpp     ****     case Rotation::Degre_0 :   // Portrait
+ 2033              		.loc 1 43 5 is_stmt 1 view .LVU553
+ 2034 0022 032D     		cmp	r5, #3
+ 2035 0024 21D8     		bhi	.L110
+ 2036 0026 DFE805F0 		tbb	[pc, r5]
+ 2037              	.L115:
+ 2038 002a 17       		.byte	(.L116-.L115)/2
+ 2039 002b 02       		.byte	(.L114-.L115)/2
+ 2040 002c 17       		.byte	(.L116-.L115)/2
+ 2041 002d 02       		.byte	(.L114-.L115)/2
+ 2042              		.p2align 1
+ 2043              	.L114:
+  49:Frame.cpp     ****     case Rotation::Degre_270 : // Inverted landscape
+ 2044              		.loc 1 49 5 view .LVU554
+  50:Frame.cpp     ****         setLandscape();
+ 2045              		.loc 1 50 5 view .LVU555
+  51:Frame.cpp     ****         break;
+ 2046              		.loc 1 51 9 view .LVU556
+ 2047              	.LVL133:
+ 2048              	.LBB305:
+ 2049              	.LBI305:
+  90:Frame.cpp     ****     m_Height = m_InitWidth;
+ 2050              		.loc 1 90 6 view .LVU557
+ 2051              	.LBB306:
+  91:Frame.cpp     ****     m_Width = m_InitHeight;
+ 2052              		.loc 1 91 5 view .LVU558
+  91:Frame.cpp     ****     m_Width = m_InitHeight;
+ 2053              		.loc 1 91 14 is_stmt 0 view .LVU559
+ 2054 002e B4F85800 		ldrh	r0, [r4, #88]
+  92:Frame.cpp     ****     m_BlocHeight = m_InitBlocWidth;
+ 2055              		.loc 1 92 13 view .LVU560
+ 2056 0032 B4F85A10 		ldrh	r1, [r4, #90]
+  93:Frame.cpp     ****     m_BlocWidth = m_InitBlocHeight;
+ 2057              		.loc 1 93 18 view .LVU561
+ 2058 0036 B4F86020 		ldrh	r2, [r4, #96]
+  94:Frame.cpp     ****     InitBlocs();
+ 2059              		.loc 1 94 17 view .LVU562
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 57
+
+
+ 2060 003a B4F86230 		ldrh	r3, [r4, #98]
+  91:Frame.cpp     ****     m_Width = m_InitHeight;
+ 2061              		.loc 1 91 14 view .LVU563
+ 2062 003e A4F85E00 		strh	r0, [r4, #94]	@ movhi
+  92:Frame.cpp     ****     m_BlocHeight = m_InitBlocWidth;
+ 2063              		.loc 1 92 5 is_stmt 1 view .LVU564
+  95:Frame.cpp     **** }
+ 2064              		.loc 1 95 14 is_stmt 0 view .LVU565
+ 2065 0042 2046     		mov	r0, r4
+  92:Frame.cpp     ****     m_BlocHeight = m_InitBlocWidth;
+ 2066              		.loc 1 92 13 view .LVU566
+ 2067 0044 A4F85C10 		strh	r1, [r4, #92]	@ movhi
+  93:Frame.cpp     ****     m_BlocWidth = m_InitBlocHeight;
+ 2068              		.loc 1 93 5 is_stmt 1 view .LVU567
+  93:Frame.cpp     ****     m_BlocWidth = m_InitBlocHeight;
+ 2069              		.loc 1 93 18 is_stmt 0 view .LVU568
+ 2070 0048 A4F86620 		strh	r2, [r4, #102]	@ movhi
+  94:Frame.cpp     ****     InitBlocs();
+ 2071              		.loc 1 94 5 is_stmt 1 view .LVU569
+  94:Frame.cpp     ****     InitBlocs();
+ 2072              		.loc 1 94 17 is_stmt 0 view .LVU570
+ 2073 004c A4F86430 		strh	r3, [r4, #100]	@ movhi
+  95:Frame.cpp     **** }
+ 2074              		.loc 1 95 5 is_stmt 1 view .LVU571
+ 2075              	.LBE306:
+ 2076              	.LBE305:
+  54:Frame.cpp     **** // ---------------------------------------------------------------------------
+ 2077              		.loc 1 54 1 is_stmt 0 view .LVU572
+ 2078 0050 BDE83840 		pop	{r3, r4, r5, lr}
+ 2079              		.cfi_remember_state
+ 2080              		.cfi_restore 14
+ 2081              		.cfi_restore 5
+ 2082              		.cfi_restore 4
+ 2083              		.cfi_restore 3
+ 2084              		.cfi_def_cfa_offset 0
+ 2085              	.LVL134:
+ 2086              	.LBB308:
+ 2087              	.LBB307:
+  95:Frame.cpp     **** }
+ 2088              		.loc 1 95 14 view .LVU573
+ 2089 0054 FFF7FEBF 		b	_ZN10cRBG_Frame9InitBlocsEv
+ 2090              	.LVL135:
+ 2091              	.L116:
+ 2092              		.cfi_restore_state
+  95:Frame.cpp     **** }
+ 2093              		.loc 1 95 14 view .LVU574
+ 2094              	.LBE307:
+ 2095              	.LBE308:
+  44:Frame.cpp     ****     case Rotation::Degre_180 : // Inverter portrait
+ 2096              		.loc 1 44 5 is_stmt 1 view .LVU575
+  45:Frame.cpp     ****         setPortrait();
+ 2097              		.loc 1 45 5 view .LVU576
+  46:Frame.cpp     ****         break;
+ 2098              		.loc 1 46 9 view .LVU577
+ 2099              	.LBB309:
+ 2100              	.LBI309:
+  80:Frame.cpp     ****     m_Height = m_InitHeight;
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 58
+
+
+ 2101              		.loc 1 80 6 view .LVU578
+ 2102              	.LBB310:
+  81:Frame.cpp     ****     m_Width = m_InitWidth;
+ 2103              		.loc 1 81 5 view .LVU579
+  82:Frame.cpp     ****     m_BlocHeight = m_InitBlocHeight;
+ 2104              		.loc 1 82 5 view .LVU580
+  82:Frame.cpp     ****     m_BlocHeight = m_InitBlocHeight;
+ 2105              		.loc 1 82 13 is_stmt 0 view .LVU581
+ 2106 0058 A26D     		ldr	r2, [r4, #88]
+  85:Frame.cpp     **** }
+ 2107              		.loc 1 85 14 view .LVU582
+ 2108 005a 2046     		mov	r0, r4
+  84:Frame.cpp     ****     InitBlocs();
+ 2109              		.loc 1 84 17 view .LVU583
+ 2110 005c 236E     		ldr	r3, [r4, #96]
+  82:Frame.cpp     ****     m_BlocHeight = m_InitBlocHeight;
+ 2111              		.loc 1 82 13 view .LVU584
+ 2112 005e E265     		str	r2, [r4, #92]
+  83:Frame.cpp     ****     m_BlocWidth = m_InitBlocWidth;
+ 2113              		.loc 1 83 5 is_stmt 1 view .LVU585
+  84:Frame.cpp     ****     InitBlocs();
+ 2114              		.loc 1 84 5 view .LVU586
+  84:Frame.cpp     ****     InitBlocs();
+ 2115              		.loc 1 84 17 is_stmt 0 view .LVU587
+ 2116 0060 6366     		str	r3, [r4, #100]
+  85:Frame.cpp     **** }
+ 2117              		.loc 1 85 5 is_stmt 1 view .LVU588
+ 2118              	.LBE310:
+ 2119              	.LBE309:
+  54:Frame.cpp     **** // ---------------------------------------------------------------------------
+ 2120              		.loc 1 54 1 is_stmt 0 view .LVU589
+ 2121 0062 BDE83840 		pop	{r3, r4, r5, lr}
+ 2122              		.cfi_remember_state
+ 2123              		.cfi_restore 14
+ 2124              		.cfi_restore 5
+ 2125              		.cfi_restore 4
+ 2126              		.cfi_restore 3
+ 2127              		.cfi_def_cfa_offset 0
+ 2128              	.LVL136:
+ 2129              	.LBB312:
+ 2130              	.LBB311:
+  85:Frame.cpp     **** }
+ 2131              		.loc 1 85 14 view .LVU590
+ 2132 0066 FFF7FEBF 		b	_ZN10cRBG_Frame9InitBlocsEv
+ 2133              	.LVL137:
+ 2134              	.L110:
+ 2135              		.cfi_restore_state
+  85:Frame.cpp     **** }
+ 2136              		.loc 1 85 14 view .LVU591
+ 2137              	.LBE311:
+ 2138              	.LBE312:
+  54:Frame.cpp     **** // ---------------------------------------------------------------------------
+ 2139              		.loc 1 54 1 view .LVU592
+ 2140 006a 38BD     		pop	{r3, r4, r5, pc}
+  54:Frame.cpp     **** // ---------------------------------------------------------------------------
+ 2141              		.loc 1 54 1 view .LVU593
+ 2142              		.cfi_endproc
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 59
+
+
+ 2143              	.LFE2605:
+ 2145              		.text
+ 2146              	.Letext0:
+ 2147              		.file 5 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\machine\\_default_types.h"
+ 2148              		.file 6 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\sys\\_stdint.h"
+ 2149              		.file 7 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\stdint.h"
+ 2150              		.file 8 "c:\\program files\\daisytoolchain\\lib\\gcc\\arm-none-eabi\\10.2.1\\include\\stddef.h"
+ 2151              		.file 9 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\c++\\10.2.1\\cmath"
+ 2152              		.file 10 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\c++\\10.2.1\\bits\\std_abs.h"
+ 2153              		.file 11 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\c++\\10.2.1\\cstdlib"
+ 2154              		.file 12 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\c++\\10.2.1\\cstdint"
+ 2155              		.file 13 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\c++\\10.2.1\\type_traits"
+ 2156              		.file 14 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\c++\\10.2.1\\debug\\debug.h"
+ 2157              		.file 15 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\c++\\10.2.1\\arm-none-eabi\\t
+ 2158              		.file 16 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\c++\\10.2.1\\bits\\algorithmf
+ 2159              		.file 17 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\c++\\10.2.1\\bits\\stl_pair.h
+ 2160              		.file 18 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\c++\\10.2.1\\bits\\exception_
+ 2161              		.file 19 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\c++\\10.2.1\\cstdarg"
+ 2162              		.file 20 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\c++\\10.2.1\\cstdio"
+ 2163              		.file 21 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\c++\\10.2.1\\cstring"
+ 2164              		.file 22 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\c++\\10.2.1\\bits\\predefined
+ 2165              		.file 23 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\sys\\_types.h"
+ 2166              		.file 24 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\sys\\reent.h"
+ 2167              		.file 25 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\sys\\lock.h"
+ 2168              		.file 26 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\math.h"
+ 2169              		.file 27 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\stdlib.h"
+ 2170              		.file 28 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\c++\\10.2.1\\math.h"
+ 2171              		.file 29 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\c++\\10.2.1\\stdlib.h"
+ 2172              		.file 30 "../../../../Desktop/DaisyExamples/libDaisy//src/daisy_core.h"
+ 2173              		.file 31 "../../../../Desktop/DaisyExamples/libDaisy//src/per/tim.h"
+ 2174              		.file 32 "../../../../Desktop/DaisyExamples/libDaisy//src/sys/system.h"
+ 2175              		.file 33 "../../../../Desktop/DaisyExamples/libDaisy//src/per/gpio.h"
+ 2176              		.file 34 "../../../../Desktop/DaisyExamples/libDaisy//src/per/spi.h"
+ 2177              		.file 35 "../../../../Desktop/DaisyExamples/libDaisy//src/util/wav_format.h"
+ 2178              		.file 36 "../../../../Desktop/DaisyExamples/libDaisy//src/dev/max11300.h"
+ 2179              		.file 37 "../../../../Desktop/DaisyExamples/libDaisy//src/daisy_seed.h"
+ 2180              		.file 38 "c:\\program files\\daisytoolchain\\lib\\gcc\\arm-none-eabi\\10.2.1\\include\\stdarg.h"
+ 2181              		.file 39 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\stdio.h"
+ 2182              		.file 40 "c:\\program files\\daisytoolchain\\arm-none-eabi\\include\\string.h"
+ 2183              		.file 41 "<built-in>"
+ 2184              		.file 42 "../../../../Desktop/DaisyExamples/libDaisy//src/dev/sr_595.h"
+ARM GAS  C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s 			page 60
+
+
+DEFINED SYMBOLS
+                            *ABS*:00000000 Frame.cpp
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:17     .text._ZN10cRBG_Frame16sendRASETDMADataEPvN5daisy9SpiHandle6ResultE:00000000 $t
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:26     .text._ZN10cRBG_Frame16sendRASETDMADataEPvN5daisy9SpiHandle6ResultE:00000000 _ZN10cRBG_Frame16sendRASETDMADataEPvN5daisy9SpiHandle6ResultE
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:102    .text._ZN10cRBG_Frame16sendRASETDMADataEPvN5daisy9SpiHandle6ResultE:00000034 $d
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:439    .text._ZN10cRBG_Frame15sendRAWWRDMACmdEPvN5daisy9SpiHandle6ResultE:00000000 _ZN10cRBG_Frame15sendRAWWRDMACmdEPvN5daisy9SpiHandle6ResultE
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:107    .text._ZN10cRBG_Frame6endDMAEPvN5daisy9SpiHandle6ResultE:00000000 $t
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:115    .text._ZN10cRBG_Frame6endDMAEPvN5daisy9SpiHandle6ResultE:00000000 _ZN10cRBG_Frame6endDMAEPvN5daisy9SpiHandle6ResultE
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:239    .text._ZN10cRBG_Frame6endDMAEPvN5daisy9SpiHandle6ResultE:0000005c $d
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:352    .text._ZN10cRBG_Frame16sendCASETDMADataEPvN5daisy9SpiHandle6ResultE:00000000 _ZN10cRBG_Frame16sendCASETDMADataEPvN5daisy9SpiHandle6ResultE
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:244    .text._ZN10cRBG_Frame16sendRAWWRDMADataEPvN5daisy9SpiHandle6ResultE:00000000 $t
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:252    .text._ZN10cRBG_Frame16sendRAWWRDMADataEPvN5daisy9SpiHandle6ResultE:00000000 _ZN10cRBG_Frame16sendRAWWRDMADataEPvN5daisy9SpiHandle6ResultE
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:339    .text._ZN10cRBG_Frame16sendRAWWRDMADataEPvN5daisy9SpiHandle6ResultE:0000003c $d
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:344    .text._ZN10cRBG_Frame16sendCASETDMADataEPvN5daisy9SpiHandle6ResultE:00000000 $t
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:426    .text._ZN10cRBG_Frame16sendCASETDMADataEPvN5daisy9SpiHandle6ResultE:00000034 $d
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:539    .text._ZN10cRBG_Frame15sendRASETDMACmdEPvN5daisy9SpiHandle6ResultE:00000000 _ZN10cRBG_Frame15sendRASETDMACmdEPvN5daisy9SpiHandle6ResultE
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:431    .text._ZN10cRBG_Frame15sendRAWWRDMACmdEPvN5daisy9SpiHandle6ResultE:00000000 $t
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:526    .text._ZN10cRBG_Frame15sendRAWWRDMACmdEPvN5daisy9SpiHandle6ResultE:00000038 $d
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:531    .text._ZN10cRBG_Frame15sendRASETDMACmdEPvN5daisy9SpiHandle6ResultE:00000000 $t
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:613    .text._ZN10cRBG_Frame15sendRASETDMACmdEPvN5daisy9SpiHandle6ResultE:00000034 $d
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:618    .text._ZN10cRBG_Frame7sendDMAEv:00000000 $t
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:626    .text._ZN10cRBG_Frame7sendDMAEv:00000000 _ZN10cRBG_Frame7sendDMAEv
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:802    .text._ZN10cRBG_Frame7sendDMAEv:00000058 $d
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:807    .text._ZN9Cmd_RAMWR7setDataEttttP10cRBG_Frame:00000000 $t
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:815    .text._ZN9Cmd_RAMWR7setDataEttttP10cRBG_Frame:00000000 _ZN9Cmd_RAMWR7setDataEttttP10cRBG_Frame
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:1072   .text._ZN10cRBG_Frame7AddBlocEtt.part.0:00000000 $t
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:1079   .text._ZN10cRBG_Frame7AddBlocEtt.part.0:00000000 _ZN10cRBG_Frame7AddBlocEtt.part.0
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:1273   .text._ZN10cRBG_Frame7AddBlocEtt:00000000 $t
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:1281   .text._ZN10cRBG_Frame7AddBlocEtt:00000000 _ZN10cRBG_Frame7AddBlocEtt
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:1337   .text._ZN10cRBG_Frame10FlushFrameEv:00000000 $t
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:1345   .text._ZN10cRBG_Frame10FlushFrameEv:00000000 _ZN10cRBG_Frame10FlushFrameEv
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:1696   .text._ZN10cRBG_Frame10FlushFrameEv:000000c4 $d
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:1705   .text._ZN10cRBG_Frame9InitBlocsEv:00000000 $t
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:1713   .text._ZN10cRBG_Frame9InitBlocsEv:00000000 _ZN10cRBG_Frame9InitBlocsEv
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:1876   .text._ZN10cRBG_Frame8setFrameEP3RGBP9FIFO_Datatt:00000000 $t
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:1884   .text._ZN10cRBG_Frame8setFrameEP3RGBP9FIFO_Datatt:00000000 _ZN10cRBG_Frame8setFrameEP3RGBP9FIFO_Datatt
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:1970   .text._ZN10cRBG_Frame8setFrameEP3RGBP9FIFO_Datatt:00000054 $d
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:1975   .text._ZN10cRBG_Frame16setFrameRotationE8Rotation:00000000 $t
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:1983   .text._ZN10cRBG_Frame16setFrameRotationE8Rotation:00000000 _ZN10cRBG_Frame16setFrameRotationE8Rotation
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:2038   .text._ZN10cRBG_Frame16setFrameRotationE8Rotation:0000002a $d
+C:\Users\pbant\AppData\Local\Temp\ccpmu6dJ.s:2042   .text._ZN10cRBG_Frame16setFrameRotationE8Rotation:0000002e $t
+
+UNDEFINED SYMBOLS
+_ZN5daisy4GPIO5WriteEb
+_ZN5daisy9SpiHandle11DmaTransmitEPhjPFvPvEPFvS2_NS0_6ResultEES2_
+_ZN5daisy6System10DelayTicksEm
+memset
+_ZN7TFT_SPI12Init_TFT_SPIEv
+_ZN5daisy6System5DelayEm
+_ZN7TFT_SPI14setTFTRotationE8Rotation

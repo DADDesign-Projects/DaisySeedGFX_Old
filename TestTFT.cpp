@@ -36,8 +36,11 @@ int main(void)
 	__Display.Init(__FrameBuff, &__Fifo, TFT_WIDTH, TFT_HEIGHT);
 	__Display.setRotation(Rotation::Degre_90);
 
-	uint8_t TabColorMax = 9;
+	uint8_t TabColorMax = 12;
 	cColor TabColor[] = {
+		cColor(255, 0, 0),
+		cColor(0, 255, 0),
+		cColor(0, 0, 255),
 		cColor(52, 225, 235),
 		cColor(52, 235, 171),
 		cColor(95, 235, 52),
@@ -55,7 +58,7 @@ int main(void)
 
 	cColor Color(0,0,0);
 	uint8_t CtColor = 0;
-		
+	
 	while(1) {
 		x = 30;
 		y = 50;
@@ -113,6 +116,6 @@ int main(void)
 
 		__Display.FlushFrame();
 
-		System::Delay(800);
+		System::Delay(1500);
 	}
 }
