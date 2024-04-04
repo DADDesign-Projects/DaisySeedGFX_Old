@@ -12,6 +12,13 @@
 #define TFT_CONTROLEUR_TFT  ST7789
 //#define TFT_CONTROLEUR_TFT  ST7735
 
+// Codage des couleurs
+// 18 Codage 18 bits RGB666
+// 16 Codage 16 bits RGB565
+
+//#define TFT_COLOR 18
+#define TFT_COLOR 16
+
 // Configuration du SPI
 #define TFT_SPI_PORT SPI_1
 #define TFT_SPI_MODE Mode3

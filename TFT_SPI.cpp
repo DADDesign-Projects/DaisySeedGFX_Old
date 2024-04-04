@@ -87,7 +87,11 @@ void TFT_SPI::Init_TFT_SPI(){
     SendData(0xC0); // 5 to 6-bit conversion: r0 = r5, b0 = b5
 
     SendCommand(ST7789_COLMOD);
-    SendData(0x66);
+#if TFT_COLOR == 16
+        SendData(0x55);
+#else
+        SendData(0x66);
+#endif
     System::Delay(10);
 
     //--------------------------------ST7789V Frame rate setting----------------------------------//

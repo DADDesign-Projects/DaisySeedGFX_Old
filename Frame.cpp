@@ -212,9 +212,14 @@ void Cmd_RAMWR::setData(uint16_t x, uint16_t y, uint16_t dx, uint16_t dy, cRBG_F
         pFrameCourant = pFrame->getPtr(x, PosY);
         pEndLigne = pFrame->getPtr(dx, PosY);
         while (pFrameCourant <= pEndLigne){
-            *pBloc++ = pFrameCourant->getB();
-            *pBloc++ = pFrameCourant->getG();
-            *pBloc++ = pFrameCourant->getR();
+#if TFT_COLOR == 16
+                *pBloc++ = (pFrameCourant->getB() & 0xF8) | (pFrameCourant->getG() >> 5 );
+                *pBloc++ = (pFrameCourant->getR() >> 3) | ((pFrameCourant->getG() << 3 )  & 0xE0);
+#else
+                *pBloc++ = pFrameCourant->getB();
+                *pBloc++ = pFrameCourant->getG();
+                *pBloc++ = pFrameCourant->getR();
+#endif
             pFrameCourant++;
         }
     }
