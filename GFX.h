@@ -1,5 +1,5 @@
 //------------------------------------------------------------------------
-// Copyright(c) 2024 Dad Desing.
+// Copyright(c) 2024 Dad Design.
 //      Bibliothèque graphique
 //
 // Inspiré largement de :
@@ -9,6 +9,8 @@
 #pragma once
 #include "Frame.h"
 #define PROGMEM
+
+constexpr float __PI = 3.14159265358979;
 
 //***********************************************************************************
 // CFont
@@ -163,6 +165,8 @@ public:
     void drawLine(uint16_t x, uint16_t y, uint16_t dx, uint16_t dy, cColor Color);
     // Tracer un cercle vide
     void drawCircle(uint16_t centerX, uint16_t centerY, uint16_t radius, cColor Color);
+    // Tracer un arc de cercle vide
+    void drawArc(uint16_t centerX, uint16_t centerY, uint16_t radius, uint16_t AlphaIn, uint16_t AlphaOut, cColor Color);
     // Tracer un cercle plein
     void drawFillCircle(uint16_t centerX, uint16_t centerY, uint16_t radius, cColor Color);
     // Tracer une image 8bits par couleurs

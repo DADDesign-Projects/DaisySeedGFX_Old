@@ -101,6 +101,8 @@ int main(void)
 		__Display.drawLine(x-dx, y, x+dx, y, cColor(0,0,0));
 		__Display.drawLine(x, y-dx, x, y+dx, cColor(0,0,0));
 
+		__Display.drawArc(x, y+100, dx, 90, 270, Color);
+		
 		char Buff[20];
 		
 		__Display.setCursor(30, 200);

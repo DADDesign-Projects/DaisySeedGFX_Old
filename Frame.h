@@ -1,5 +1,5 @@
 //------------------------------------------------------------------------
-// Copyright(c) 2024 Dad Desing.
+// Copyright(c) 2024 Dad Design.
 //      Gestion d'une frame de pixel
 //      Les pixels sont organisés en bloc de transmission
 //      pour une mise à jour optimisé de l'écran

@@ -1,5 +1,5 @@
 //------------------------------------------------------------------------
-// Copyright(c) 2024 Dad Desing.
+// Copyright(c) 2024 Dad Design.
 //      Gestion d'une frame de pixel
 //      Les pixels sont organisés en blocs de transmission.
 //      Lorsqu'un Bloc est modififé il est placé dans un FIFO 

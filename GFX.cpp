@@ -1,5 +1,5 @@
 //------------------------------------------------------------------------
-// Copyright(c) 2024 Dad Desing.
+// Copyright(c) 2024 Dad Design.
 //      Bibliothèque graphique
 //
 // Inspiré largement de :
@@ -176,6 +176,71 @@ void cGFX::drawCircle(uint16_t centerX, uint16_t centerY, uint16_t radius, cColo
         setPixel(centerX + y, centerY - x, Color);
         setPixel(centerX - y, centerY + x, Color);
         setPixel(centerX - y, centerY - x, Color);
+
+        if (m > 0)
+        {
+            y--;
+            m -= 8 * y;
+        }
+        x++;
+        m += 8 * x + 4;
+    }
+}
+
+//-----------------------------------------------------------------------------------
+// Dessin d'un arc de cercle
+// L'algorithme de cercle de Bresenham 
+void cGFX::drawArc(uint16_t centerX, uint16_t centerY, uint16_t radius, uint16_t AlphaIn, uint16_t AlphaOut, cColor Color)
+{
+    bool Inv = false;
+    if(AlphaIn > AlphaOut){
+        uint16_t Temp = AlphaIn;
+        AlphaIn = AlphaOut;
+        AlphaOut = Temp;
+        Inv = true;
+    }
+    int16_t x = 0;
+    int16_t y = radius;
+    int16_t m = 5 - 4 * radius;
+
+    while (x <= y) {
+        
+        uint16_t angle = atan2((float) y, (float) x) * 180 / __PI; // Conversion de radians en degrés
+        if(Inv){
+            uint16_t angle1 = 90 - angle;        
+            if(!((angle1 >= AlphaIn) && (angle1 <= AlphaOut)))  setPixel(centerX + x, centerY - y, Color);
+            uint16_t angle2 = angle;
+            if(!((angle2 >= AlphaIn) && (angle2 <= AlphaOut)))  setPixel(centerX + y, centerY - x, Color);
+            angle1 += 90;       
+            if(!((angle1 >= AlphaIn) && (angle1 <= AlphaOut)))  setPixel(centerX + y, centerY + x, Color);
+            angle2 += 90;
+            if(!((angle2 >= AlphaIn) && (angle2 <= AlphaOut)))  setPixel(centerX + x, centerY + y, Color);
+            angle1 += 90;
+            if(!((angle1 >= AlphaIn) && (angle1 <= AlphaOut)))  setPixel(centerX - x, centerY + y, Color);
+            angle2 += 90;
+            if(!((angle2 >= AlphaIn) && (angle2 <= AlphaOut)))  setPixel(centerX - y, centerY + x, Color);
+            angle1 += 90;
+            if(!((angle1 >= AlphaIn) && (angle1 <= AlphaOut)))  setPixel(centerX - y, centerY - x, Color);
+            angle2 += 90;
+            if(!((angle2 >= AlphaIn) && (angle2 <= AlphaOut)))  setPixel(centerX - x, centerY - y, Color);
+        }else{
+            uint16_t angle1 = 90 - angle;        
+            if(((angle1 >= AlphaIn) && (angle1 <= AlphaOut)))  setPixel(centerX + x, centerY - y, Color);
+            uint16_t angle2 = angle;
+            if(((angle2 >= AlphaIn) && (angle2 <= AlphaOut)))  setPixel(centerX + y, centerY - x, Color);
+            angle1 += 90;       
+            if(((angle1 >= AlphaIn) && (angle1 <= AlphaOut)))  setPixel(centerX + y, centerY + x, Color);
+            angle2 += 90;
+            if(((angle2 >= AlphaIn) && (angle2 <= AlphaOut)))  setPixel(centerX + x, centerY + y, Color);
+            angle1 += 90;
+            if(((angle1 >= AlphaIn) && (angle1 <= AlphaOut)))  setPixel(centerX - x, centerY + y, Color);
+            angle2 += 90;
+            if(((angle2 >= AlphaIn) && (angle2 <= AlphaOut)))  setPixel(centerX - y, centerY + x, Color);
+            angle1 += 90;
+            if(((angle1 >= AlphaIn) && (angle1 <= AlphaOut)))  setPixel(centerX - y, centerY - x, Color);
+            angle2 += 90;
+            if(((angle2 >= AlphaIn) && (angle2 <= AlphaOut)))  setPixel(centerX - x, centerY - y, Color);
+        }
 
         if (m > 0)
         {

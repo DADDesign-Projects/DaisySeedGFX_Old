@@ -1,5 +1,5 @@
 //------------------------------------------------------------------------
-// Copyright(c) 2023 Dad Desing.
+// Copyright(c) 2023 Dad Design.
 //      Definir ici les paramètre de votre écran
 //------------------------------------------------------------------------
 #pragma once
