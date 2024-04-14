@@ -1,12 +1,12 @@
 #include "Debug.h"
 #include "daisy_seed.h"
-#include "daisysp.h"
+//#include "daisysp.h"
 #include "GFX.h"
 #include "Vanilla20pt.h"
 #include "Pap.h"
 
 using namespace daisy;
-using namespace daisysp;
+//using namespace daisysp;
 
 DaisySeed hw;
 

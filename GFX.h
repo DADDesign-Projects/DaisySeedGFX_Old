@@ -214,6 +214,9 @@ public:
     // Lire la largeur de la frame
     inline uint16_t getHeight() { return cRBG_Frame::getHeight(); }
 
+    // Lecture le la largueur de la chaine de caratère.
+    inline uint16_t getTextWidth(const char *Text){return m_pFont->getTextWidth(Text);}
+
     // --------------------------------------------------------------------------
     // Données de la classe
  protected:
