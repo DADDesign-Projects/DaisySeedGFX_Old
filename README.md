@@ -5,6 +5,8 @@
 DAD Design
 
 ## Description
+TFT graphical display library for Daisy Seed. ST7789 driver
+
 Présentation
 -----------------
 DaisySeedGFX est une bibliothèque graphique pour la plateforme Daisy Seed de Electrosmith.
