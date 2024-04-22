@@ -1,14 +1,10 @@
 # DaisySeedGFX
-
-## Author
-
-DAD Design
-
-## Description
 TFT graphical display library for Daisy Seed. ST7789 driver
 
-Présentation
------------------
+## Author
+DAD Design
+
+## Présentation
 DaisySeedGFX est une bibliothèque graphique pour la plateforme Daisy Seed de Electrosmith.
 La bibliothèque prend en charge pour le moment uniquement le contrôleur ST7789. Je pense intégrer rapidement le contrôleur ST7735. A priori la bibliothèque doit pouvoir être adaptée à n’importe quel contrôleur assez facilement.
 
@@ -16,14 +12,12 @@ La bibliothèque utilise un frame buffer intermédiaire ente les primitives grap
 
 Les primitives graphiques sont minimalistes, elles pourront être complétées en fonction des besoins.
 
-Configuration
------------------
+## Configuration
 Le fichier UserConfig.h permet d’adapter la bibliothèque aux différentes implémentations matérielles.
 
 Le fichier Font.h est utilisé pour définir les fonts chargées. Chaque font est décrite dans un fichier xxx.h ce fichier peut être créé en utilisant l’outil https://rop.nl/truetype2gfx/
 
-Outil de développement
---------------------------------
+## Outil de développement
 Le code est modifiable et compilable sous VS Code dans l’environnement de développement du Daisy Seed (voir le https://github.com/electro-smith).
 
 Le fichier Makefile est à adapter en fonction de l’emplacement des librairies : 
