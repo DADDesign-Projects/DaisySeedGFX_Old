@@ -1,4 +1,6 @@
 # DaisySeedGFX
+**Repositorie obsolete see https://github.com/DADDesign-Projects/DaisySeedGFX**
+
 TFT graphical display library for Daisy Seed. ST7789 driver
 
 ## Author
